@@ -45,7 +45,7 @@ class Seq2seqModel(nn.Module):
     return 
 
   def forward(self, src, tgt):
-    enc_lens = tmu.seq_to_lens(src, self.pad_id)
+    enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
     src = self.src_embeddings(src)
     enc_outputs, enc_state = self.encoder(src, enc_lens)
     dec_inputs = self.tgt_embeddings(tgt[:, :-1])
@@ -59,7 +59,7 @@ class Seq2seqModel(nn.Module):
     return loss, acc
 
   def predict(self, src):
-    enc_lens = tmu.seq_to_lens(src, self.pad_id)
+    enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
     src = self.src_embeddings(src)
     enc_outputs, enc_state = self.encoder(src, enc_lens)
     predictions = self.decoder.decode_predict(enc_state, self.tgt_embeddings)
@@ -114,8 +114,11 @@ class Seq2seq(FRModel):
     return 
 
   def train_step(self, batch, n_iter, ei, bi):
+    for n in batch: batch[n] = batch[n].to(self.device)
     self.model.zero_grad()
-    loss, acc = self.model(batch['src'], batch['tgt'])
+    loss, acc = self.model(batch['src'].to(self.device), 
+                           batch['tgt'].to(self.device)
+                           )
     loss.backward()
     self.optimizer.step()
 
@@ -123,11 +126,14 @@ class Seq2seq(FRModel):
     return out_dict
 
   def val_step(self, batch, n_iter, ei, bi):
+    for n in batch: batch[n] = batch[n].to(self.device)
     with torch.no_grad():
-      loss, acc = self.model(batch['src'], batch['tgt'])
+      loss, acc = self.model(batch['src'], 
+                             batch['tgt']
+                             )
       predictions = self.model.predict(batch['src'])
       tgt_lens = tmu.seq_to_lens(batch['tgt'])
-      tgt_mask = batch['tgt'] != self.pad_id
+      tgt_mask = (batch['tgt'] != self.pad_id)
       max_tgt_len = batch['tgt'].size(1)
       exact_match = predictions[:, :max_tgt_len] == batch['tgt']
       exact_match = (exact_match * tgt_mask).sum(1)
@@ -135,8 +141,8 @@ class Seq2seq(FRModel):
       batch_size = tgt_mask.size(0)
       exact_match = float(exact_match) / float(batch_size)
     out_dict = {'exact_match': exact_match, 
-                'loss': loss,
-                'acc': acc,
+                'loss': loss.item(),
+                'acc': acc.item(),
                 'predictions': predictions}
     return out_dict
 

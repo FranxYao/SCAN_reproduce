@@ -37,6 +37,7 @@ class Controller(object):
     self.validation_scores = {}
     for n in model.validation_scores:
       self.validation_scores[n] = []
+    self.save_checkpoints = args.save_checkpoints
 
     self.num_epoch = args.num_epoch
     self.start_epoch = args.start_epoch 
@@ -51,13 +52,14 @@ class Controller(object):
 
     # logging 
     self.logger = logger.TrainingLog(self.model_name, self.output_path, 
-      self.tensorboard_path, model.log_info, args.print_var) 
+      self.tensorboard_path, model.log_info, args.print_var, self.use_tensorboard) 
     return 
 
   def save_ckpt(self, model, ei):
     """Save the model after epoch"""
-    save_path = self.model_path + 'ckpt_e%d' % ei
-    print('Saving the model at: %s' % save_path)
+    # save_path = self.model_path + 'ckpt_e%d' % ei
+    save_path = self.model_path
+    print('Epoch %d, saving the model at: %s' % (ei, save_path))
     torch.save(
       {'model_state_dict': model.state_dict(), 
        'optimizer_state_dict': model.optimizer.state_dict()}, 
@@ -145,7 +147,8 @@ class Controller(object):
           best_validation_epoch = ei
           best_validation_scores = copy.deepcopy(validation_scores)
           # save model 
-          self.save_ckpt(model, ei)
+          if(self.save_checkpoints):
+            self.save_ckpt(model, ei)
         else: 
           print(
             'Validation %.4f, no improvement, keep best at epoch %d' % 

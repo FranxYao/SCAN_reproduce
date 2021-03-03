@@ -57,6 +57,9 @@ def define_argument():
     "--use_tensorboard", type=str2bool, 
     nargs='?', const=True, default=False)
   parser.add_argument(
+    "--save_checkpoints", type=str2bool, 
+    nargs='?', const=True, default=False)
+  parser.add_argument(
     "--inspect_model", type=str2bool, 
     nargs='?', const=True, default=False)
   parser.add_argument(
