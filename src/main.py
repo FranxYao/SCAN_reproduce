@@ -1,11 +1,12 @@
 import argparse
 import torch
+import sys
 
 from data_utils import SCANData
 from seq2seq import Seq2seq, Seq2seqModel
 
 from frtorch import torch_model_utils as tmu
-from frtorch import str2bool, set_arguments
+from frtorch import str2bool, set_arguments, PrintLog
 from controller import Controller
 
 
@@ -28,6 +29,9 @@ def define_argument():
     "--output_path", default='../outputs/', type=str)
   parser.add_argument(
     "--tensorboard_path", default='../tensorboard/', type=str)
+  parser.add_argument(
+    "--log_print_to_file", type=str2bool, 
+    nargs='?', const=True, default=False)
 
   # hardware
   parser.add_argument(
@@ -117,7 +121,10 @@ def main():
   args = parser.parse_args()
   args = set_arguments(args)
 
-  
+  if(args.log_print_to_file): 
+    print('All printed log also written in: %s' % 
+      args.output_path + 'train_log.txt')
+    sys.stdout = PrintLog(args.output_path + 'train_log.txt')
 
   # dataset
   if(args.dataset == 'scan'):

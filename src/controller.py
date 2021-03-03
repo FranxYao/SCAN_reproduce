@@ -73,10 +73,12 @@ class Controller(object):
     """
     print('Start training ... ')
 
-    histrory_validation = []
+    history_validation = []
     best_validation = -1e10
     best_validation_epoch = -1
     best_validation_scores = None
+    history_test = []
+
     start_time = time()
 
     train_dataloader = dataset.train_dataloader()
@@ -135,11 +137,11 @@ class Controller(object):
       if(ei >= self.validate_start_epoch):
         validation_criteria, validation_scores = self.validate(
           model, dataset, ei, n_iter, 'dev')
-        histrory_validation.append(validation_criteria)
+        history_validation.append(validation_criteria)
 
         if(validation_criteria > best_validation):
           print(
-            'validation increase from %.4f to %.4f, save the model' %
+            'validation increase from %.4f to %.4f' %
             (best_validation, validation_criteria))
           print('current validation score:')
           pprint(validation_scores)
@@ -158,12 +160,15 @@ class Controller(object):
           print('best validation score:')
           pprint(best_validation_scores)
         print('history validation:')
-        print(histrory_validation)
+        print(history_validation)
         print('----------------------------------------------------------------')
         print()
-        _, test_scores = self.validate(model, dataset, ei, n_iter, 'test')
+        test_criteria, test_scores = self.validate(model, dataset, ei, n_iter, 'test')
+        history_test.append(test_criteria)
         print('test scores:')
         pprint(test_scores)
+        print('history test scores:')
+        print(history_test)
       else: 
         print('validate_start_epoch = %d, current %d, do not validate' % 
           (self.validate_start_epoch, ei))

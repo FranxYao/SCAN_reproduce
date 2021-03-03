@@ -86,9 +86,24 @@ class SCANData(object):
     if(self.split_name == 'random'):
       train_path = '../data/scan/simple_split/tasks_train_simple.txt'
       test_path = '../data/scan/simple_split/tasks_test_simple.txt'
-    if(self.split_name == 'length'):
+    elif(self.split_name == 'length'):
       train_path = '../data/scan/length_split/tasks_train_length.txt'
       test_path = '../data/scan/length_split/tasks_test_length.txt'
+    elif(self.split_name == 'length_trunc25'):
+      train_path = '../data/scan/scan_new_splits/tasks_train_length_trunc25.txt'
+      test_path = '../data/scan/scan_new_splits/tasks_test_length_trunc25.txt'
+    elif(self.split_name == 'length_trunc27'):
+      train_path = '../data/scan/scan_new_splits/tasks_train_length_trunc27.txt'
+      test_path = '../data/scan/scan_new_splits/tasks_test_length_trunc27.txt'
+    elif(self.split_name == 'length_trunc30'):
+      train_path = '../data/scan/scan_new_splits/tasks_train_length_trunc30.txt'
+      test_path = '../data/scan/scan_new_splits/tasks_test_length_trunc30.txt'
+    elif(self.split_name == 'length_1shot'):
+      train_path = '../data/scan/scan_new_splits/tasks_train_length_1shot.txt'
+      test_path = '../data/scan/scan_new_splits/tasks_test_length_1shot.txt'
+    else:
+      raise NotImplementedError(
+        'data split %s not implemented' % self.split_name)
 
     # split
     train_data = open(train_path).readlines()
