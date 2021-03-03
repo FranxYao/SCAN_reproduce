@@ -2,7 +2,7 @@ import argparse
 import torch
 
 from data_utils import SCANData
-from seq2seq import Seq2seq
+from seq2seq import Seq2seq, Seq2seqModel
 
 from frtorch import torch_model_utils as tmu
 from frtorch import str2bool, set_arguments, Controller
@@ -92,7 +92,6 @@ def define_argument():
     "--optimizer", default='Adam', type=str)
   parser.add_argument(
     "--learning_rate", default=1e-4, type=float)
-    
 
   # model 
   parser.add_argument(
@@ -130,18 +129,19 @@ def main():
 
   # model 
   if(args.model_name == 'seq2seq'):
-    model = Seq2seq(pad_id=dataset.tgt_word2id['<PAD>'],
-                    start_id=dataset.tgt_word2id['<GOO>'],
-                    max_dec_len=dataset.max_dec_len,
-                    src_vocab_size=dataset.src_vocab_size, 
-                    tgt_vocab_size=dataset.tgt_vocab_size,
-                    embedding_size=args.embedding_size,
-                    state_size=args.state_size,
-                    dropout=args.dropout,
-                    learning_rate=args.learning_rate,
-                    device=args.device
-                    )
-    model.build()
+    model_ = Seq2seqModel(pad_id=dataset.tgt_word2id['<PAD>'],
+                          start_id=dataset.tgt_word2id['<GOO>'],
+                          max_dec_len=dataset.max_dec_len,
+                          src_vocab_size=dataset.src_vocab_size, 
+                          tgt_vocab_size=dataset.tgt_vocab_size,
+                          embedding_size=args.embedding_size,
+                          state_size=args.state_size,
+                          lstm_layers=args.lstm_layers,
+                          dropout=args.dropout,
+                          device=args.device
+                          )
+    model = Seq2seq(args.learning_rate, args.device, dataset.tgt_word2id['<PAD>'])
+    model.build(model_)
   else: 
     raise NotImplementedError('model %s not implemented!' % args.model_name)  
   tmu.print_params(model)

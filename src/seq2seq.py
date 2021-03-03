@@ -4,7 +4,7 @@ from torch import nn
 from torch.optim import Adam
 
 from argparse import ArgumentParser
-from frtorch import FRModel
+from frtorch import FRModel, str2bool
 from frtorch import torch_model_utils as tmu
 from seq_models import LSTMEncoder, LSTMDecoder
 
@@ -17,6 +17,7 @@ class Seq2seqModel(nn.Module):
                tgt_vocab_size, 
                embedding_size, 
                state_size,
+               lstm_layers,
                dropout,
                device
                ):
@@ -29,6 +30,7 @@ class Seq2seqModel(nn.Module):
     self.tgt_embeddings = nn.Embedding(
       tgt_vocab_size, embedding_size)
     self.encoder = LSTMEncoder(state_size=state_size, 
+                               lstm_layers=lstm_layers,
                                dropout=dropout, 
                                embedding_size=embedding_size,
                                device=device
@@ -39,6 +41,7 @@ class Seq2seqModel(nn.Module):
                                max_dec_len=max_dec_len,
                                embedding_size=embedding_size,
                                state_size=state_size,
+                               lstm_layers=lstm_layers,
                                dropout=dropout
                                )
 
@@ -68,43 +71,20 @@ class Seq2seqModel(nn.Module):
 class Seq2seq(FRModel):
 
   def __init__(self, 
-               pad_id,
-               start_id,
-               max_dec_len,
-               src_vocab_size, 
-               tgt_vocab_size, 
-               embedding_size, 
-               state_size, 
-               dropout, 
                learning_rate,
-               device
+               device,
+               pad_id
                ):
     """FRTorch seq2seq wrapper"""
     super().__init__()
-    self.pad_id = pad_id
-    self.start_id = start_id
-    self.max_dec_len = max_dec_len
-    self.src_vocab_size = src_vocab_size
-    self.tgt_vocab_size = tgt_vocab_size
-    self.embedding_size = embedding_size
-    self.state_size = state_size
-    self.dropout = dropout
     self.learning_rate = learning_rate
     self.device = device
+    self.pad_id = pad_id
     return 
 
-  def build(self):
+  def build(self, model):
     """"""
-    self.model = Seq2seqModel(self.pad_id, 
-                              self.start_id,
-                              self.max_dec_len,
-                              self.src_vocab_size, 
-                              self.tgt_vocab_size, 
-                              self.embedding_size, 
-                              self.state_size,
-                              self.dropout,
-                              self.device
-                              )
+    self.model = model
 
     self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
 
@@ -114,6 +94,9 @@ class Seq2seq(FRModel):
     return 
 
   def train_step(self, batch, n_iter, ei, bi):
+    """
+    Returns
+    """
     for n in batch: batch[n] = batch[n].to(self.device)
     self.model.zero_grad()
     loss, acc = self.model(batch['src'].to(self.device), 
@@ -126,6 +109,13 @@ class Seq2seq(FRModel):
     return out_dict
 
   def val_step(self, batch, n_iter, ei, bi):
+    """
+    Returns:
+      exact_match: Need update
+      loss:
+      acc:
+      predictions:
+    """
     for n in batch: batch[n] = batch[n].to(self.device)
     with torch.no_grad():
       loss, acc = self.model(batch['src'], 
@@ -149,5 +139,9 @@ class Seq2seq(FRModel):
   @staticmethod
   def add_model_specific_args(parent_parser):
     parser = ArgumentParser(parents=[parent_parser], add_help=False)
-
+    parser.add_argument(
+      "--lstm_layers", default=1, type=int)
+    parser.add_argument(
+      "--lstm_bidirectional", type=str2bool, 
+      nargs='?', const=True, default=True)
     return parser

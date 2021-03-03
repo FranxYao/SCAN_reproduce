@@ -42,13 +42,42 @@ class FRModel(object):
     return 
 
   def train_step(self, batch_dict, n_iter, ei, bi):
+    """
+    Args:
+      batch_dict:
+      n_iter:
+      ei:
+      bi:
+    """
     return 
 
   def inspect_step(self, batch_dict, n_iter, ei, bi):
+    """Single step inspection during training
+    
+    Args:
+      batch_dict:
+      n_iter:
+      ei:
+      bi:
+    """
     return 
 
   def val_step(self, batch_dict, n_iter, ei, bi):
+    """
+    Args:
+      batch_dict:
+      n_iter:
+      ei:
+      bi:
+    """
     return 
 
   def test_step(self, batch_dict, n_iter, ei, bi):
+    """
+    Args:
+      batch_dict:
+      n_iter:
+      ei:
+      bi:
+    """
     return 
