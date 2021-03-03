@@ -73,13 +73,15 @@ class Seq2seq(FRModel):
   def __init__(self, 
                learning_rate,
                device,
-               pad_id
+               pad_id,
+               tgt_id2word
                ):
     """FRTorch seq2seq wrapper"""
     super().__init__()
     self.learning_rate = learning_rate
     self.device = device
     self.pad_id = pad_id
+    self.tgt_id2word = tgt_id2word
     return 
 
   def build(self, model):
@@ -97,7 +99,6 @@ class Seq2seq(FRModel):
     """
     Returns
     """
-    for n in batch: batch[n] = batch[n].to(self.device)
     self.model.zero_grad()
     loss, acc = self.model(batch['src'].to(self.device), 
                            batch['tgt'].to(self.device)
@@ -116,7 +117,6 @@ class Seq2seq(FRModel):
       acc:
       predictions:
     """
-    for n in batch: batch[n] = batch[n].to(self.device)
     with torch.no_grad():
       loss, acc = self.model(batch['src'], 
                              batch['tgt']
@@ -125,15 +125,34 @@ class Seq2seq(FRModel):
       tgt_lens = tmu.seq_to_lens(batch['tgt'])
       tgt_mask = (batch['tgt'] != self.pad_id)
       max_tgt_len = batch['tgt'].size(1)
-      exact_match = predictions[:, :max_tgt_len] == batch['tgt']
-      exact_match = (exact_match * tgt_mask).sum(1)
-      exact_match = (exact_match == tgt_lens).sum()
-      batch_size = tgt_mask.size(0)
-      exact_match = float(exact_match) / float(batch_size)
+
+    batch_size = batch['src'].size(0)
+    tgt_str, pred_str = [], []
+    em = 0
+    for bi in range(batch_size):
+      tgt = []
+      for idx in tmu.to_np(batch['tgt'][bi][1:]):
+        w = self.tgt_id2word[idx]
+        if(w == '<END>'): break
+        tgt.append(w)
+      tgt = ' '.join(tgt)
+      tgt_str.append(tgt)
+
+      pred = []
+      for idx in tmu.to_np(predictions[bi]):
+        w = self.tgt_id2word[idx]
+        if(w == '<END>'): break
+        pred.append(w)
+      pred = ' '.join(pred)
+      pred_str.append(pred)
+      if(tgt == pred): em += 1
+    exact_match = float(em) / batch_size
+
     out_dict = {'exact_match': exact_match, 
                 'loss': loss.item(),
                 'acc': acc.item(),
-                'predictions': predictions}
+                'tgt_str': tgt_str, 
+                'predictions': pred_str}
     return out_dict
 
   @staticmethod

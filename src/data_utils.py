@@ -178,12 +178,16 @@ class SCANData(object):
       slen = tmu.seq_to_lens(batch['src'][bi])
       s = 'src: ' + ' '.join(
         self.src_id2word[idx.item()] for idx in batch['src'][bi][:slen]) + '\n'
-      slen = tmu.seq_to_lens(batch['tgt'][bi])
-      s += 'tgt: ' + ' '.join(
-        self.tgt_id2word[idx.item()] for idx in batch['tgt'][bi][1:slen]) + '\n'
-      slen = tmu.seq_to_lens(out_dict['predictions'][bi])
-      s += 'pred: ' + ' '.join(
-        self.tgt_id2word[idx.item()] for idx in out_dict['predictions'][bi][1:slen]) + '\n'
+
+      s += 'tgt: ' + out_dict['tgt_str'][bi] + '\n'
+      s += 'pred: ' + out_dict['predictions'][bi] + '\n'
+
+      # slen = tmu.seq_to_lens(batch['tgt'][bi])
+      # s += 'tgt: ' + ' '.join(
+      #   self.tgt_id2word[idx.item()] for idx in batch['tgt'][bi][1:slen]) + '\n'
+      # slen = tmu.seq_to_lens(out_dict['predictions'][bi])
+      # s += 'pred: ' + ' '.join(
+      #   self.tgt_id2word[idx.item()] for idx in out_dict['predictions'][bi][1:slen]) + '\n'
       fd.write(s)
     return 
 

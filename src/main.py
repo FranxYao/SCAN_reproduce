@@ -5,7 +5,8 @@ from data_utils import SCANData
 from seq2seq import Seq2seq, Seq2seqModel
 
 from frtorch import torch_model_utils as tmu
-from frtorch import str2bool, set_arguments, Controller
+from frtorch import str2bool, set_arguments
+from controller import Controller
 
 
 def define_argument():
@@ -140,7 +141,8 @@ def main():
                           dropout=args.dropout,
                           device=args.device
                           )
-    model = Seq2seq(args.learning_rate, args.device, dataset.tgt_word2id['<PAD>'])
+    model = Seq2seq(args.learning_rate, args.device, 
+      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
     model.build(model_)
   else: 
     raise NotImplementedError('model %s not implemented!' % args.model_name)  

@@ -3,12 +3,11 @@ import copy
 
 import numpy as np 
 
-from . import torch_model_utils as tmu
+from frtorch import torch_model_utils as tmu
+from frtorch import TrainingLog
 
 from time import time
 from pprint import pprint 
-
-from . import logger
 
 
 class Controller(object):
@@ -51,7 +50,7 @@ class Controller(object):
     self.validation_criteria = model.validation_criteria
 
     # logging 
-    self.logger = logger.TrainingLog(self.model_name, self.output_path, 
+    self.logger = TrainingLog(self.model_name, self.output_path, 
       self.tensorboard_path, model.log_info, args.print_var, self.use_tensorboard) 
     return 
 
@@ -95,8 +94,9 @@ class Controller(object):
       model.train()
       # before epoch 
       self.logger.reset()
-
+      epoch_start_time = time()
       for bi, batch in enumerate(train_dataloader):
+        for n in batch: batch[n] = batch[n].to(self.device)
         n_iter += 1
 
         out_dict = model.train_step(batch, n_iter, ei, bi)
@@ -107,12 +107,12 @@ class Controller(object):
 
         if(bi % self.print_log_per_nbatch == 0): 
           print(
-            '\nmodel %s version %s\n' % 
+            '\nmodel %s version %s; ' % 
               (self.model_name, self.model_version) + 
-            'epoch %d batch %d/%d; n_iter %d; ' % 
-              (ei, bi, num_batches, n_iter) + 
-            'time %ds; batch time %.2fs' % 
-              (time() - start_time, (time() - start_time) / (bi + 1))
+            'epoch %d/%d batch %d/%d n_iter %d; ' % 
+              (ei, self.num_epoch, bi, num_batches, n_iter) + 
+            'time %ds batch time %.2fs' % 
+              (time() - start_time, (time() - epoch_start_time) / (bi + 1))
           )
           self.logger.print()
 
@@ -210,6 +210,7 @@ class Controller(object):
 
     start_time = time()
     for bi, batch in enumerate(dataloader):
+      for n in batch: batch[n] = batch[n].to(self.device)
       out_dict = model.val_step(batch, n_iter, ei, bi)
       outputs.append(out_dict)
       batches.append(batch)
