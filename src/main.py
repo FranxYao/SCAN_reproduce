@@ -4,6 +4,7 @@ import sys
 
 from data_utils import SCANData
 from seq2seq import Seq2seq, Seq2seqModel
+from seq2seq_pos import Seq2seqPos, Seq2seqPosModel
 
 from frtorch import torch_model_utils as tmu
 from frtorch import str2bool, set_arguments, PrintLog
@@ -117,7 +118,8 @@ def main():
   # arguments
   parser = define_argument()
   parser = SCANData.add_data_specific_args(parser)
-  parser = Seq2seq.add_model_specific_args(parser)
+  # parser = Seq2seq.add_model_specific_args(parser)
+  parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
 
@@ -128,8 +130,11 @@ def main():
 
   # dataset
   if(args.dataset == 'scan'):
+    if(args.model_name == 'seq2seq_pos'): require_pos = True
+    else: require_pos = False
     dataset = SCANData(split_name=args.split_name,
-                       batch_size=args.batch_size
+                       batch_size=args.batch_size,
+                       require_pos=require_pos
                        )
     dataset.build()
   else: 
@@ -149,6 +154,23 @@ def main():
                           device=args.device
                           )
     model = Seq2seq(args.learning_rate, args.device, 
+      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
+    model.build(model_)
+  elif(args.model_name == 'seq2seq_pos'):
+    model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
+                            pad_id=dataset.tgt_word2id['<PAD>'],
+                            start_id=dataset.tgt_word2id['<GOO>'],
+                            max_dec_len=dataset.max_dec_len,
+                            src_vocab_size=dataset.src_vocab_size, 
+                            pos_size=len(dataset.pos_word2id),
+                            tgt_vocab_size=dataset.tgt_vocab_size,
+                            embedding_size=args.embedding_size,
+                            state_size=args.state_size,
+                            lstm_layers=args.lstm_layers,
+                            dropout=args.dropout,
+                            device=args.device
+                            )
+    model = Seq2seqPos(args.learning_rate, args.device, 
       dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
     model.build(model_)
   else: 
