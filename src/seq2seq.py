@@ -115,7 +115,9 @@ class Seq2seq(FRModel):
 
   def train_step(self, batch, n_iter, ei, bi):
     self.model.zero_grad()
-    loss, acc = self.model(batch['src'], batch['tgt'])
+    # print(self.model.device)
+    loss, acc = self.model(batch['src'].to(self.device), 
+                           batch['tgt'].to(self.device))
     loss.backward()
     self.optimizer.step()
 
@@ -124,8 +126,9 @@ class Seq2seq(FRModel):
 
   def val_step(self, batch, n_iter, ei, bi):
     with torch.no_grad():
-      loss, acc = self.model(batch['src'], batch['tgt'])
-      predictions = self.model.predict(batch['src'])
+      loss, acc = self.model(batch['src'].to(self.device), 
+                             batch['tgt'].to(self.device))
+      predictions = self.model.predict(batch['src'].to(self.device))
       tgt_lens = tmu.seq_to_lens(batch['tgt'])
       tgt_mask = batch['tgt'] != self.pad_id
       max_tgt_len = batch['tgt'].size(1)
