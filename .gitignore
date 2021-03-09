@@ -3,4 +3,4 @@ __pycache__
 /models/
 /outputs/
 /tensorboard/
-DS_Store
+*.DS_Store
