@@ -11,6 +11,7 @@ from seq_models import LSTMEncoder, LSTMDecoder
 class Seq2seqPosModel(nn.Module):
   def __init__(self, 
                word_dropout, 
+               use_attention,
                pad_id,
                start_id,
                max_dec_len,
@@ -27,6 +28,7 @@ class Seq2seqPosModel(nn.Module):
     super().__init__()
     self.pad_id = pad_id
     self.word_dropout = word_dropout
+    self.use_attention = use_attention
     self.device = device
 
     self.src_embeddings = nn.Embedding(
@@ -62,16 +64,23 @@ class Seq2seqPosModel(nn.Module):
       dropout_mask = (dropout_mask > word_dropout_ratio).float().unsqueeze(-1)
 
     enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
+    enc_mask = (src != self.pad_id).to(self.device)
     src = self.src_embeddings(src) 
 
     if(self.word_dropout): src = src * dropout_mask
 
     pos = self.pos_embeddings(pos)
     enc_outputs, enc_state = self.encoder(src + pos, enc_lens)
+    max_enc_size = enc_outputs.size(1)
+    enc_mask = enc_mask[:, :max_enc_size]
     dec_inputs = self.tgt_embeddings(tgt[:, :-1])
     dec_targets = tgt[:, 1:]
-    log_prob, predictions = self.decoder.decode_train(
-      enc_state, dec_inputs, dec_targets)
+    if(self.use_attention):
+      log_prob, predictions = self.decoder.decode_train(
+        enc_state, dec_inputs, dec_targets, None, enc_outputs, enc_mask)
+    else:
+      log_prob, predictions = self.decoder.decode_train(
+        enc_state, dec_inputs, dec_targets)
     dec_mask = dec_targets != self.pad_id
     acc = ((predictions == dec_targets) * dec_mask).sum().float() 
     acc /= dec_mask.sum().float()
@@ -82,10 +91,17 @@ class Seq2seqPosModel(nn.Module):
     """"""
     # During prediction we do not use word dropout
     enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
+    enc_mask = (src != self.pad_id).to(self.device)
     src = self.src_embeddings(src)
     pos = self.pos_embeddings(pos)
     enc_outputs, enc_state = self.encoder(src, enc_lens)
-    predictions = self.decoder.decode_predict(enc_state, self.tgt_embeddings)
+    max_enc_size = enc_outputs.size(1)
+    enc_mask = enc_mask[:, :max_enc_size]
+    if(self.use_attention):
+      predictions = self.decoder.decode_predict(
+        enc_state, self.tgt_embeddings, None, enc_outputs, enc_mask)
+    else: 
+      predictions = self.decoder.decode_predict(enc_state, self.tgt_embeddings)
     return predictions
 
 class Seq2seqPos(FRModel):
@@ -182,12 +198,8 @@ class Seq2seqPos(FRModel):
   @staticmethod
   def add_model_specific_args(parent_parser):
     parser = ArgumentParser(parents=[parent_parser], add_help=False)
-    parser.add_argument(
-      "--lstm_layers", default=1, type=int)
-    parser.add_argument(
-      "--lstm_bidirectional", type=str2bool, 
-      nargs='?', const=True, default=True)
-    parser.add_argument(
-      "--word_dropout", type=str2bool, 
-      nargs='?', const=True, default=False)
+    parser.add_argument("--lstm_layers", default=1, type=int)
+    parser.add_argument("--lstm_bidirectional", default=True, type=str2bool)
+    parser.add_argument("--word_dropout", default=False, type=str2bool)
+    parser.add_argument("--use_attention", default=False, type=str2bool)
     return parser

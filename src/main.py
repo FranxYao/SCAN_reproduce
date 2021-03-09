@@ -118,8 +118,8 @@ def main():
   # arguments
   parser = define_argument()
   parser = SCANData.add_data_specific_args(parser)
-  # parser = Seq2seq.add_model_specific_args(parser)
-  parser = Seq2seqPos.add_model_specific_args(parser)
+  parser = Seq2seq.add_model_specific_args(parser)
+  # parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
 
@@ -158,6 +158,7 @@ def main():
     model.build(model_)
   elif(args.model_name == 'seq2seq_pos'):
     model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
+                            use_attention=args.use_attention,
                             pad_id=dataset.tgt_word2id['<PAD>'],
                             start_id=dataset.tgt_word2id['<GOO>'],
                             max_dec_len=dataset.max_dec_len,

@@ -126,6 +126,9 @@ class SCANData(object):
     elif(self.split_name == 'length_1shot'):
       train_path = '../data/scan/scan_new_splits/tasks_train_length_1shot.txt'
       test_path = '../data/scan/scan_new_splits/tasks_test_length_1shot.txt'
+    elif(self.split_name == 'length_new_command'):
+      train_path = '../data/scan/scan_new_splits/tasks_train_length_new_command.txt'
+      test_path = '../data/scan/scan_new_splits/tasks_test_length_new_command.txt'
     else:
       raise NotImplementedError(
         'data split %s not implemented' % self.split_name)
