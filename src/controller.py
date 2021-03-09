@@ -3,12 +3,11 @@ import copy
 
 import numpy as np 
 
-from . import torch_model_utils as tmu
+from frtorch import torch_model_utils as tmu
+from frtorch import TrainingLog
 
 from time import time
 from pprint import pprint 
-
-from . import logger
 
 
 class Controller(object):
@@ -37,6 +36,7 @@ class Controller(object):
     self.validation_scores = {}
     for n in model.validation_scores:
       self.validation_scores[n] = []
+    self.save_checkpoints = args.save_checkpoints
 
     self.num_epoch = args.num_epoch
     self.start_epoch = args.start_epoch 
@@ -50,14 +50,15 @@ class Controller(object):
     self.validation_criteria = model.validation_criteria
 
     # logging 
-    self.logger = logger.TrainingLog(self.model_name, self.output_path, 
-      self.tensorboard_path, model.log_info, args.print_var) 
+    self.logger = TrainingLog(self.model_name, self.output_path, 
+      self.tensorboard_path, model.log_info, args.print_var, self.use_tensorboard) 
     return 
 
   def save_ckpt(self, model, ei):
     """Save the model after epoch"""
-    save_path = self.model_path + 'ckpt_e%d' % ei
-    print('Saving the model at: %s' % save_path)
+    # save_path = self.model_path + 'ckpt_e%d' % ei
+    save_path = self.model_path
+    print('Epoch %d, saving the model at: %s' % (ei, save_path))
     torch.save(
       {'model_state_dict': model.state_dict(), 
        'optimizer_state_dict': model.optimizer.state_dict()}, 
@@ -72,10 +73,12 @@ class Controller(object):
     """
     print('Start training ... ')
 
-    histrory_validation = []
+    history_validation = []
     best_validation = -1e10
     best_validation_epoch = -1
     best_validation_scores = None
+    history_test = []
+
     start_time = time()
 
     train_dataloader = dataset.train_dataloader()
@@ -93,8 +96,9 @@ class Controller(object):
       model.train()
       # before epoch 
       self.logger.reset()
-
+      epoch_start_time = time()
       for bi, batch in enumerate(train_dataloader):
+        for n in batch: batch[n] = batch[n].to(self.device)
         n_iter += 1
 
         out_dict = model.train_step(batch, n_iter, ei, bi)
@@ -105,12 +109,12 @@ class Controller(object):
 
         if(bi % self.print_log_per_nbatch == 0): 
           print(
-            '\nmodel %s version %s\n' % 
+            '\nmodel %s version %s; ' % 
               (self.model_name, self.model_version) + 
-            'epoch %d batch %d/%d; n_iter %d; ' % 
-              (ei, bi, num_batches, n_iter) + 
-            'time %ds; batch time %.2fs' % 
-              (time() - start_time, (time() - start_time) / (bi + 1))
+            'epoch %d/%d batch %d/%d n_iter %d; ' % 
+              (ei, self.num_epoch, bi, num_batches, n_iter) + 
+            'time %ds batch time %.2fs' % 
+              (time() - start_time, (time() - epoch_start_time) / (bi + 1))
           )
           self.logger.print()
 
@@ -133,11 +137,11 @@ class Controller(object):
       if(ei >= self.validate_start_epoch):
         validation_criteria, validation_scores = self.validate(
           model, dataset, ei, n_iter, 'dev')
-        histrory_validation.append(validation_criteria)
+        history_validation.append(validation_criteria)
 
         if(validation_criteria > best_validation):
           print(
-            'validation increase from %.4f to %.4f, save the model' %
+            'validation increase from %.4f to %.4f' %
             (best_validation, validation_criteria))
           print('current validation score:')
           pprint(validation_scores)
@@ -145,7 +149,8 @@ class Controller(object):
           best_validation_epoch = ei
           best_validation_scores = copy.deepcopy(validation_scores)
           # save model 
-          self.save_ckpt(model, ei)
+          if(self.save_checkpoints):
+            self.save_ckpt(model, ei)
         else: 
           print(
             'Validation %.4f, no improvement, keep best at epoch %d' % 
@@ -155,12 +160,15 @@ class Controller(object):
           print('best validation score:')
           pprint(best_validation_scores)
         print('history validation:')
-        print(histrory_validation)
+        print(history_validation)
         print('----------------------------------------------------------------')
         print()
-        _, test_scores = self.validate(model, dataset, ei, n_iter, 'test')
+        test_criteria, test_scores = self.validate(model, dataset, ei, n_iter, 'test')
+        history_test.append(test_criteria)
         print('test scores:')
         pprint(test_scores)
+        print('history test scores:')
+        print(history_test)
       else: 
         print('validate_start_epoch = %d, current %d, do not validate' % 
           (self.validate_start_epoch, ei))
@@ -207,6 +215,7 @@ class Controller(object):
 
     start_time = time()
     for bi, batch in enumerate(dataloader):
+      for n in batch: batch[n] = batch[n].to(self.device)
       out_dict = model.val_step(batch, n_iter, ei, bi)
       outputs.append(out_dict)
       batches.append(batch)

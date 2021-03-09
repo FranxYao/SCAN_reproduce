@@ -1,15 +1,16 @@
 import numpy as np
+import sys
 from torch.utils.tensorboard import SummaryWriter
 
 class TrainingLog(object):
   def __init__(self, model_name, output_path, 
-    tensorboard_path=None, log_info=[], print_var=False):
+    tensorboard_path=None, log_info=[], print_var=False, use_tensorboard=False):
     self.model_name = model_name
     self.output_path = output_path
     self.tensorboard_path = tensorboard_path
     self.print_var = print_var
     
-    if(tensorboard_path is not None):
+    if(use_tensorboard):
       self.summary_writer = SummaryWriter(log_dir=self.tensorboard_path)
     else: self.summary_writer = None
 
@@ -68,3 +69,19 @@ class TrainingLog(object):
       self.summary_writer.add_scalar('%s/%s' % (mode, key), 
         out_dict[key], n_iter)
     return
+
+
+class PrintLog(object):
+  def __init__(self, log_path):
+    self.terminal = sys.stdout
+    self.log = open(log_path, "a", buffering=1)
+
+  def write(self, message):
+    self.terminal.write(message)
+    self.log.write(message)  
+
+  def flush(self):
+    #this flush method is needed for python 3 compatibility.
+    #this handles the flush command by doing nothing.
+    #you might want to specify some extra behavior here.
+    pass    

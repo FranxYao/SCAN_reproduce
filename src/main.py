@@ -1,11 +1,14 @@
 import argparse
 import torch
+import sys
 
 from data_utils import SCANData
-from seq2seq import Seq2seq
+from seq2seq import Seq2seq, Seq2seqModel
+from seq2seq_pos import Seq2seqPos, Seq2seqPosModel
 
 from frtorch import torch_model_utils as tmu
-from frtorch import str2bool, set_arguments, Controller
+from frtorch import str2bool, set_arguments, PrintLog
+from controller import Controller
 
 
 def define_argument():
@@ -27,6 +30,9 @@ def define_argument():
     "--output_path", default='../outputs/', type=str)
   parser.add_argument(
     "--tensorboard_path", default='../tensorboard/', type=str)
+  parser.add_argument(
+    "--log_print_to_file", type=str2bool, 
+    nargs='?', const=True, default=False)
 
   # hardware
   parser.add_argument(
@@ -55,6 +61,9 @@ def define_argument():
     nargs='?', const=True, default=False)
   parser.add_argument(
     "--use_tensorboard", type=str2bool, 
+    nargs='?', const=True, default=False)
+  parser.add_argument(
+    "--save_checkpoints", type=str2bool, 
     nargs='?', const=True, default=False)
   parser.add_argument(
     "--inspect_model", type=str2bool, 
@@ -89,7 +98,6 @@ def define_argument():
     "--optimizer", default='Adam', type=str)
   parser.add_argument(
     "--learning_rate", default=1e-4, type=float)
-    
 
   # model 
   parser.add_argument(
@@ -111,15 +119,22 @@ def main():
   parser = define_argument()
   parser = SCANData.add_data_specific_args(parser)
   parser = Seq2seq.add_model_specific_args(parser)
+  # parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
 
-  
+  if(args.log_print_to_file): 
+    print('All printed log also written in: %s' % 
+      args.output_path + 'train_log.txt')
+    sys.stdout = PrintLog(args.output_path + 'train_log.txt')
 
   # dataset
   if(args.dataset == 'scan'):
+    if(args.model_name == 'seq2seq_pos'): require_pos = True
+    else: require_pos = False
     dataset = SCANData(split_name=args.split_name,
-                       batch_size=args.batch_size
+                       batch_size=args.batch_size,
+                       require_pos=require_pos
                        )
     dataset.build()
   else: 
@@ -127,18 +142,38 @@ def main():
 
   # model 
   if(args.model_name == 'seq2seq'):
-    model = Seq2seq(pad_id=dataset.tgt_word2id['<PAD>'],
-                    start_id=dataset.tgt_word2id['<GOO>'],
-                    max_dec_len=dataset.max_dec_len,
-                    src_vocab_size=dataset.src_vocab_size, 
-                    tgt_vocab_size=dataset.tgt_vocab_size,
-                    embedding_size=args.embedding_size,
-                    state_size=args.state_size,
-                    dropout=args.dropout,
-                    learning_rate=args.learning_rate,
-                    device=args.device
-                    )
-    model.build()
+    model_ = Seq2seqModel(pad_id=dataset.tgt_word2id['<PAD>'],
+                          start_id=dataset.tgt_word2id['<GOO>'],
+                          max_dec_len=dataset.max_dec_len,
+                          src_vocab_size=dataset.src_vocab_size, 
+                          tgt_vocab_size=dataset.tgt_vocab_size,
+                          embedding_size=args.embedding_size,
+                          state_size=args.state_size,
+                          lstm_layers=args.lstm_layers,
+                          dropout=args.dropout,
+                          device=args.device
+                          )
+    model = Seq2seq(args.learning_rate, args.device, 
+      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
+    model.build(model_)
+  elif(args.model_name == 'seq2seq_pos'):
+    model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
+                            use_attention=args.use_attention,
+                            pad_id=dataset.tgt_word2id['<PAD>'],
+                            start_id=dataset.tgt_word2id['<GOO>'],
+                            max_dec_len=dataset.max_dec_len,
+                            src_vocab_size=dataset.src_vocab_size, 
+                            pos_size=len(dataset.pos_word2id),
+                            tgt_vocab_size=dataset.tgt_vocab_size,
+                            embedding_size=args.embedding_size,
+                            state_size=args.state_size,
+                            lstm_layers=args.lstm_layers,
+                            dropout=args.dropout,
+                            device=args.device
+                            )
+    model = Seq2seqPos(args.learning_rate, args.device, 
+      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
+    model.build(model_)
   else: 
     raise NotImplementedError('model %s not implemented!' % args.model_name)  
   tmu.print_params(model)

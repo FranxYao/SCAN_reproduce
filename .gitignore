@@ -1,5 +1,7 @@
 __pycache__
 /data/quora/
+/data/scan/scan_new_splits.zip
+/data/scan/length_split.zip
 /models/
 /outputs/
 /tensorboard/
