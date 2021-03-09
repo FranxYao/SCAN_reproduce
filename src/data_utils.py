@@ -43,11 +43,13 @@ def get_pos(data):
   for d in data:
     p = []
     for di in d:
-      if(di in ['jump', 'run', 'look', 'turn']): p.append('V')
+      if(di in ['jump', 'run', 'look', 'turn', 'walk']): p.append('V')
       elif(di in ['around', 'opposite']): p.append('VC')
       elif(di in ['left', 'right']): p.append('Dir')
       elif(di in ['twice', 'thrice']): p.append('Num')
       elif(di in ['and', 'after']): p.append('Conj')
+      else:
+        raise NameError('%s not recognized' % di)
     pos.append(p)
   return pos
 
