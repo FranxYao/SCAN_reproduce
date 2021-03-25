@@ -43,10 +43,17 @@ Miscellaneous:
 * `str2bool`
 """
 
+import os 
+import shutil
+
 import numpy as np 
+import seaborn as sns
+import pandas as pd 
 
 import torch
 import torch.nn.functional as F
+
+import matplotlib.pyplot as plt
 
 from torch.nn.parameter import Parameter
 from collections import OrderedDict, Counter
@@ -408,6 +415,251 @@ def pad_or_trunc_seq(s: list, max_len: int, pad: int = 0) -> list:
   for _ in range(max_len - len(s)): s.append(pad)
   return s[: max_len]
 
+def save_attn_figure(src, tgt, attn, fpath):
+  """Save attention heatmap
+
+  Args:
+    src: a list of strings, each string is a source token 
+    tgt: a list of strings, each string is a target token 
+    attn: an attention matrix. A 2d np array 
+    fpath: path to save the figure 
+  """
+  df = pd.DataFrame(attn) # target * source
+  df.columns = src
+  df.index = tgt
+  fig = plt.figure()
+  # sns.set(font_scale = 0.5)
+  ax = sns.heatmap(df, 
+                   annot=True, 
+                   cmap='coolwarm', 
+                   annot_kws={"size": 5},  
+                   xticklabels=True, 
+                   yticklabels=True
+                   )
+  plt.yticks(size=6)
+  plt.xticks(rotation=270)
+  plt.subplots_adjust(left=0.3, bottom=0.28)
+  ax.figure.savefig(fpath + '.png', dpi=150)
+  plt.close(fig)
+  return 
+
+
+def save_two_attn_figure(src, pred, ref, attn_pred, attn_ref, fpath):
+  """Save attention heatmap
+
+  Args:
+  src: a list of strings, each string is a source token 
+  tgt: a list of strings, each string is a target token 
+  attn: an attention matrix. A 2d np array 
+  fpath: path to save the figure 
+  """
+  attn_pred_len = attn_pred.shape[0]
+  attn_ref_len = attn_ref.shape[0]
+  attn_max_len = max(attn_pred_len, attn_ref_len)
+  attn_src_len = attn_ref.shape[1]
+  attn_pred_ = np.zeros(shape=(attn_max_len, attn_src_len))
+  attn_pred_[:attn_pred_len] = attn_pred
+  attn_ref_ = np.zeros(shape=(attn_max_len, attn_src_len))
+  attn_ref_[:attn_ref_len] = attn_ref
+  
+  fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12,6))
+  fig.tight_layout(pad=6.0)
+
+  df = pd.DataFrame(attn_ref_) # target * source
+  df.columns = src
+  for _ in range(attn_max_len - len(ref)): ref.append('')
+  df.index = ref
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='coolwarm', 
+            annot_kws={"size": 5}, 
+            ax=ax1,
+            xticklabels=True, 
+            yticklabels=True,
+            cbar=False
+            )
+  ax1.set_yticklabels(ref, fontsize=7)
+  ax1.set_xticklabels(src, rotation=300)
+
+  df = pd.DataFrame(attn_pred_) # target * source
+  df.columns = src
+  for _ in range(attn_max_len - len(pred)): pred.append('')
+  df.index = pred
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='coolwarm', 
+            annot_kws={"size": 5}, 
+            ax=ax2,
+            xticklabels=True, 
+            yticklabels=True
+            )
+  ax2.set_yticklabels(pred, fontsize=7)
+  ax2.set_xticklabels(src, rotation=300)
+
+  plt.savefig(fpath + '.png', dpi=200)
+  plt.close(fig)
+  return 
+
+# def save_attn_pred_figure(src, pred, ref, attn_pred, attn_ref, pred_dist, vocab, fpath):
+#     """Save attention heatmap
+
+#     Args:
+#     src: a list of strings, each string is a source token 
+#     tgt: a list of strings, each string is a target token 
+#     attn: an attention matrix. A 2d np array 
+#     fpath: path to save the figure 
+#     """
+#     attn_pred_len = attn_pred.shape[0]
+#     attn_ref_len = attn_ref.shape[0]
+#     attn_max_len = max(attn_pred_len, attn_ref_len)
+#     attn_src_len = attn_ref.shape[1]
+#     attn_pred_ = np.zeros(shape=(attn_max_len, attn_src_len))
+#     attn_pred_[:attn_pred_len] = attn_pred
+#     attn_ref_ = np.zeros(shape=(attn_max_len, attn_src_len))
+#     attn_ref_[:attn_ref_len] = attn_ref
+    
+#     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12,6))
+#     fig.tight_layout(pad=4.0)
+
+#     df = pd.DataFrame(attn_ref_) # target * source
+#     df.columns = src
+#     for _ in range(attn_max_len - len(ref)): ref.append('')
+#     df.index = ref
+#     sns.heatmap(df, 
+#               annot=True, 
+#               cmap='Blues', 
+#               annot_kws={"size": 5}, 
+#               ax=ax1,
+#               xticklabels=True, 
+#               yticklabels=True,
+#               cbar=False
+#               )
+#     ax1.set_yticklabels(ref, fontsize=7)
+#     ax1.set_xticklabels(src, rotation=300)
+
+#     df = pd.DataFrame(attn_pred_) # target * source
+#     df.columns = src
+#     for _ in range(attn_max_len - len(pred)): pred.append('')
+#     df.index = pred
+#     sns.heatmap(df, 
+#               annot=True, 
+#               cmap='Blues', 
+#               annot_kws={"size": 5}, 
+#               ax=ax2,
+#               xticklabels=True, 
+#               yticklabels=True,
+#               cbar=False
+#               )
+#     ax2.set_yticklabels(pred, fontsize=7)
+#     ax2.set_xticklabels(src, rotation=300)
+    
+#     df = pd.DataFrame(pred_dist) # target * source
+#     df.columns = vocab
+#     sns.heatmap(df, 
+#               annot=True, 
+#               cmap='Blues', 
+#               annot_kws={"size": 5}, 
+#               ax=ax3,
+#               xticklabels=True, 
+#               yticklabels=True,
+#               cbar=False
+#               )
+#     ax3.set_yticklabels(range(len(pred_dist)), rotation=0, fontsize=7)
+#     ax3.set_xticklabels(vocab, rotation=0, fontsize=5)
+    
+    
+#     plt.subplots_adjust(left=0.1)
+#     plt.savefig(fpath + '.png', dpi=200)
+#     plt.close(fig)
+#     return 
+
+def save_attn_pred_figure(src, pred, ref, attn_pred, attn_ref, 
+  pred_dist, pred_dist_ref, vocab, fpath):
+  """Save attention heatmap
+
+  Args:
+  src: a list of strings, each string is a source token 
+  tgt: a list of strings, each string is a target token 
+  attn: an attention matrix. A 2d np array 
+  fpath: path to save the figure 
+  """
+  attn_pred_len = attn_pred.shape[0]
+  attn_ref_len = attn_ref.shape[0]
+  attn_max_len = max(attn_pred_len, attn_ref_len)
+  attn_src_len = attn_ref.shape[1]
+  attn_pred_ = np.zeros(shape=(attn_max_len, attn_src_len))
+  attn_pred_[:attn_pred_len] = attn_pred
+  attn_ref_ = np.zeros(shape=(attn_max_len, attn_src_len))
+  attn_ref_[:attn_ref_len] = attn_ref
+  
+  fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,6))
+  fig.tight_layout(pad=4.0)
+  
+  df = pd.DataFrame(pred_dist_ref) # target * source
+  df.columns = vocab
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='Blues', 
+            annot_kws={"size": 5}, 
+            ax=ax1,
+            xticklabels=True, 
+            yticklabels=True,
+            cbar=False
+            )
+  ax1.set_xticklabels(vocab, fontsize=6, rotation=0)
+  ax1.set_yticklabels(range(len(pred_dist_ref)), rotation=0)
+
+  df = pd.DataFrame(attn_ref_) # target * source
+  df.columns = src
+  for _ in range(attn_max_len - len(ref)): ref.append('')
+  df.index = ref
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='Blues', 
+            annot_kws={"size": 5}, 
+            ax=ax2,
+            xticklabels=True, 
+            yticklabels=True,
+            cbar=False
+            )
+  ax2.set_yticklabels(ref, fontsize=7)
+  ax2.set_xticklabels(src, rotation=300)
+
+  df = pd.DataFrame(attn_pred_) # target * source
+  df.columns = src
+  for _ in range(attn_max_len - len(pred)): pred.append('')
+  df.index = pred
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='Blues', 
+            annot_kws={"size": 5}, 
+            ax=ax3,
+            xticklabels=True, 
+            yticklabels=True,
+            cbar=False
+            )
+  ax3.set_yticklabels(pred, fontsize=7)
+  ax3.set_xticklabels(src, rotation=300)
+  
+  df = pd.DataFrame(pred_dist) # target * source
+  df.columns = vocab
+  sns.heatmap(df, 
+            annot=True, 
+            cmap='Blues', 
+            annot_kws={"size": 5}, 
+            ax=ax4,
+            xticklabels=True, 
+            yticklabels=True,
+            cbar=False
+            )
+  ax4.set_xticklabels(vocab, fontsize=6, rotation=0)
+  ax4.set_yticklabels(range(len(pred_dist)), rotation=0)
+  
+  
+  plt.savefig(fpath + '.png', dpi=200)
+  plt.close(fig)
+  return 
+
 
 def sample_gumbel(shape, eps=1e-20):
   """Sample from a standard gumbel distribution"""
@@ -652,3 +904,10 @@ def str2bool(v):
     return False
   else:
     raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def refresh_dir(d):
+  if(os.path.exists(d)): 
+    print('removing existing dir: %s' % d)
+    shutil.rmtree(d)
+  print('creating dir: %s' % d)
+  os.mkdir(d)

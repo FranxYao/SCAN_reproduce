@@ -128,7 +128,7 @@ class LSTMDecoder(nn.Module):
     return 
 
   def forward(self, inp, state, memory=None, mem_mask=None, 
-    hetero_mem=None, hetero_mem_mask=None):
+    hetero_mem=None, hetero_mem_mask=None, return_attn=False):
     """
     Args: 
       state = (h, c)
@@ -153,10 +153,13 @@ class LSTMDecoder(nn.Module):
     out, state = self.cell(inp.unsqueeze(0), state)
 
     out = self.dropout(out)
-    return out, state
+    if(return_attn):
+      return out, state, attn_dist
+    else: return out, state
 
   def decode_train(self, init_state, dec_inputs, dec_targets, 
-    mem=None, mem_emb=None, mem_mask=None, hetero_mem=None, hetero_mask=None):
+    mem=None, mem_emb=None, mem_mask=None, hetero_mem=None, hetero_mask=None, 
+    return_attn=False):
     """Decoder training loop
     
     Args:
@@ -166,10 +169,12 @@ class LSTMDecoder(nn.Module):
       mem_mask: size=[batch, max_mem]
       dec_inputs: size=[batch, max_len, state]
       dec_targets: size=[batch, max_len]
+      return_attn: if return attention distribution
 
     Returns:
       log_prob: per-token log probability, averaged over everything
-      predictions:
+      predictions: size=[batch, max_dec_len]
+      attn_dist: size=[batch, max_dec_len, max_src_len]
     """
     batch_size = dec_inputs.size(0)
     max_dec_len = dec_targets.size(1)
@@ -179,12 +184,18 @@ class LSTMDecoder(nn.Module):
     dec_targets = dec_targets.transpose(0, 1)
     log_prob = []
     predictions = []
+    attn_dist = []
+    pred_dist = []
     for i in range(max_dec_len):
-      dec_out, state = self.forward(
-        dec_inputs[i], state, mem_emb, mem_mask, hetero_mem, hetero_mask)
+      dec_out, state, attn_dist_t = self.forward(
+        dec_inputs[i], state, mem_emb, mem_mask, hetero_mem, hetero_mask, True)
+
+      attn_dist.append(attn_dist_t)
+
       dec_out = dec_out[0]
       lm_logits = self.output_proj(dec_out)
       lm_prob = F.softmax(lm_logits, dim=-1)
+
       if(self.copy):
         _, copy_dist = self.copy_attn(dec_out, mem_emb, mem_mask)
         copy_prob = tmu.batch_index_put(copy_dist, mem, self.vocab_size)
@@ -197,6 +208,9 @@ class LSTMDecoder(nn.Module):
         out_prob = lm_prob
         log_prob_i = -F.cross_entropy(logits, dec_targets[i], reduction='none')
 
+      pred_prob_t = F.softmax(logits, dim=-1)
+      pred_dist.append(pred_prob_t)
+
       log_prob.append(log_prob_i)
       predictions.append(logits.argmax(dim=-1))
 
@@ -205,11 +219,14 @@ class LSTMDecoder(nn.Module):
     log_prob.masked_fill_(mask == 0, 0.) 
     log_prob = log_prob.sum() / mask.sum()
     predictions = torch.stack(predictions).transpose(0, 1)
-    return log_prob, predictions
+    attn_dist = torch.stack(attn_dist).transpose(0, 1) # [B, T, M]
+    pred_dist = torch.stack(pred_dist).transpose(0, 1) # [B, T, V]
+    if(return_attn): return log_prob, predictions, attn_dist, pred_dist
+    else: return log_prob, predictions
 
   def decode_predict(self, init_state, embeddings, 
     mem=None, mem_emb=None, mem_mask=None, 
-    hetero_mem=None, hetero_mask=None):
+    hetero_mem=None, hetero_mask=None, return_attn=False):
     """Decoding for prediction
     
     Args:
@@ -232,9 +249,12 @@ class LSTMDecoder(nn.Module):
     inp = embeddings(inp)
     predictions = []
     max_dec_len = self.max_dec_len
+    attn_dist = []
+    pred_dist = []
     for i in range(max_dec_len):
-      dec_out, state = self.forward(
-        inp, state, mem_emb, mem_mask, hetero_mem, hetero_mask)
+      dec_out, state, attn_dist_t = self.forward(
+        inp, state, mem_emb, mem_mask, hetero_mem, hetero_mask, return_attn)
+      attn_dist.append(attn_dist_t)
       dec_out = dec_out[0]
       lm_logits = self.output_proj(dec_out)
       lm_prob = F.softmax(lm_logits, dim=-1)
@@ -247,6 +267,9 @@ class LSTMDecoder(nn.Module):
       else:
         logits = lm_logits
         out_prob = lm_prob
+
+      pred_prob_t = F.softmax(logits, dim=-1)
+      pred_dist.append(pred_prob_t)
 
       if(self.decode_strategy == 'greedy'):
         out = logits.argmax(dim=-1)
@@ -275,5 +298,8 @@ class LSTMDecoder(nn.Module):
       inp = embeddings(out)
       predictions.append(out)
 
+    attn_dist = torch.stack(attn_dist).transpose(0, 1) # [B, T, M]
+    pred_dist = torch.stack(pred_dist).transpose(0, 1) # [B, T, V]
     predictions = torch.stack(predictions).transpose(0, 1) # [B, T]
-    return predictions
+    if(return_attn): return predictions, attn_dist, pred_dist
+    else: return predictions

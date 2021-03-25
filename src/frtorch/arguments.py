@@ -49,6 +49,7 @@ def set_arguments(args):
         print('removing %s' % output_path)
         shutil.rmtree(output_path)
       os.mkdir(output_path)
+      os.mkdir(output_path + '/fig')
       if(args.use_tensorboard):
         for p in os.listdir(args.tensorboard_path):
           if(p.startswith(model)): 
@@ -60,12 +61,14 @@ def set_arguments(args):
     else:
       os.mkdir(model_path)
       os.mkdir(output_path)
+      os.mkdir(output_path + '/fig')
   else: 
     pass  # test mode, do not create any directory 
 
   args.model_path = model_path + '/'
   args.output_path = output_path + '/'
   args.tensorboard_path = tensorboard_path + '/'
+  args.output_path_fig = output_path + '/fig/'
 
   # set gpu 
   os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   

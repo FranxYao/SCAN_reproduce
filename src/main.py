@@ -29,10 +29,9 @@ def define_argument():
   parser.add_argument(
     "--output_path", default='../outputs/', type=str)
   parser.add_argument(
-    "--tensorboard_path", default='../tensorboard/', type=str)
+    "--output_path_fig", default='', type=str)
   parser.add_argument(
-    "--log_print_to_file", type=str2bool, 
-    nargs='?', const=True, default=False)
+    "--tensorboard_path", default='../tensorboard/', type=str)
 
   # hardware
   parser.add_argument(
@@ -71,6 +70,11 @@ def define_argument():
   parser.add_argument(
     "--inspect_grad", type=str2bool, 
     nargs='?', const=True, default=False)
+  parser.add_argument(
+    "--log_print_to_file", type=str2bool, 
+    nargs='?', const=True, default=False)
+  parser.add_argument(
+    "--write_fig_after_epoch", default=10, type=int)
 
 
 
@@ -118,8 +122,8 @@ def main():
   # arguments
   parser = define_argument()
   parser = SCANData.add_data_specific_args(parser)
-  parser = Seq2seq.add_model_specific_args(parser)
-  # parser = Seq2seqPos.add_model_specific_args(parser)
+  # parser = Seq2seq.add_model_specific_args(parser)
+  parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
 
@@ -134,7 +138,9 @@ def main():
     else: require_pos = False
     dataset = SCANData(split_name=args.split_name,
                        batch_size=args.batch_size,
-                       require_pos=require_pos
+                       require_pos=require_pos,
+                       output_path_fig=args.output_path_fig,
+                       write_fig_after_epoch=args.write_fig_after_epoch
                        )
     dataset.build()
   else: 
@@ -153,9 +159,13 @@ def main():
                           dropout=args.dropout,
                           device=args.device
                           )
-    model = Seq2seq(args.learning_rate, args.device, 
-      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
-    model.build(model_)
+    model = Seq2seq(args.learning_rate, 
+                    args.device, 
+                    dataset.tgt_word2id['<PAD>'], 
+                    dataset.tgt_id2word, 
+                    model_, 
+                    args.output_path_fig,
+                    args.write_fig_after_epoch)
   elif(args.model_name == 'seq2seq_pos'):
     model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
                             use_attention=args.use_attention,

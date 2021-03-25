@@ -58,10 +58,12 @@ class Seq2seqPosModel(nn.Module):
     """"""
     # word dropout
     if(self.word_dropout):
-      word_dropout_ratio = 1 - (ei + 1) % 0.1
+      word_dropout_ratio = 1 - (ei + 1) * 0.1
+      # print(ei, word_dropout_ratio)
       if(ei >= 10): word_dropout_ratio = 0.
       dropout_mask = torch.rand(src.size(), device=self.device) 
       dropout_mask = (dropout_mask > word_dropout_ratio).float().unsqueeze(-1)
+    else: word_dropout_ratio = 0.
 
     enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
     enc_mask = (src != self.pad_id).to(self.device)
@@ -85,7 +87,7 @@ class Seq2seqPosModel(nn.Module):
     acc = ((predictions == dec_targets) * dec_mask).sum().float() 
     acc /= dec_mask.sum().float()
     loss = -log_prob
-    return loss, acc
+    return loss, acc, word_dropout_ratio
 
   def predict(self, src, pos):
     """"""
@@ -127,7 +129,7 @@ class Seq2seqPos(FRModel):
     self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
 
     self.validation_scores = ['exact_match', 'loss', 'acc']
-    self.log_info = ['loss', 'acc']
+    self.log_info = ['loss', 'acc', 'word_dropout_ratio']
     self.validation_criteria = 'exact_match'
     return 
 
@@ -136,7 +138,7 @@ class Seq2seqPos(FRModel):
     Returns
     """
     self.model.zero_grad()
-    loss, acc = self.model(batch['src'],
+    loss, acc, word_dropout_ratio = self.model(batch['src'],
                            batch['pos'],
                            batch['tgt'],
                            ei
@@ -144,7 +146,7 @@ class Seq2seqPos(FRModel):
     loss.backward()
     self.optimizer.step()
 
-    out_dict = {'loss': loss.item(), 'acc': acc.item()}
+    out_dict = {'loss': loss.item(), 'acc': acc.item(), 'word_dropout_ratio': word_dropout_ratio}
     return out_dict
 
   def val_step(self, batch, n_iter, ei, bi):
@@ -156,7 +158,7 @@ class Seq2seqPos(FRModel):
       predictions:
     """
     with torch.no_grad():
-      loss, acc = self.model(batch['src'], 
+      loss, acc, _ = self.model(batch['src'], 
                              batch['pos'],
                              batch['tgt'],
                              10

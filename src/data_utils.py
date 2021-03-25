@@ -71,12 +71,10 @@ class SCANDataset(Dataset):
     return len(self.src)
 
   def __getitem__(self, idx):
-    if(self.require_pos):
-      instance = {'src': self.src[idx], 
-                  'pos': self.pos[idx], 
-                  'tgt': self.tgt[idx]}
-    else: 
-      instance = {'src': self.src[idx], 'tgt': self.tgt[idx]}
+    instance = {'src': self.src[idx], 
+                'pos': self.pos[idx], 
+                'tgt': self.tgt[idx],
+                'idx': idx}
     return instance
 
 class SCANData(object):
@@ -85,7 +83,9 @@ class SCANData(object):
       split_name='random',
       batch_size=64,
       num_workers=0,
-      require_pos=False
+      require_pos=False,
+      output_path_fig='',
+      write_fig_after_epoch=10
     ):
     """
     Args:
@@ -97,6 +97,8 @@ class SCANData(object):
     self.num_workers = num_workers
     self.batch_size = batch_size
     self.require_pos = require_pos
+    self.output_path_fig = output_path_fig
+    self.write_fig_after_epoch = write_fig_after_epoch
     
     self.src_word2id = {'<PAD>': 0}
     self.src_id2word = {0: '<PAD>'}
@@ -226,15 +228,22 @@ class SCANData(object):
       )
     return loader
 
-  def write_output(self, fd, batch, out_dict):
+  def write_output_batch(self, fd, batch, out_dict, mode, e_id, b_id):
     batch_size = batch['src'].size(0)
+    visualized_index = np.random.choice(batch_size, 1, False)
+    vocab = [self.tgt_id2word[i].split('_')[-1] for i in range(len(self.tgt_id2word))]
     for bi in range(batch_size):
       slen = tmu.seq_to_lens(batch['src'][bi])
-      s = 'src: ' + ' '.join(
-        self.src_id2word[idx.item()] for idx in batch['src'][bi][:slen]) + '\n'
+      src = [self.src_id2word[idx.item()] for idx in batch['src'][bi][:slen]]
+      s = 'case id %d, src: %s' % (batch['idx'][bi], ' '.join(src)) + '\n'
 
+      tgt = out_dict['tgt_str'][bi].split()
+      tgt = [str(i) + ': ' + t for i, t in enumerate(tgt)]
       s += 'tgt: ' + out_dict['tgt_str'][bi] + '\n'
       s += 'pred: ' + out_dict['predictions'][bi] + '\n'
+
+      pred = out_dict['predictions'][bi].split()
+      pred = [str(i) + ': ' + t for i, t in enumerate(pred)]
 
       # slen = tmu.seq_to_lens(batch['tgt'][bi])
       # s += 'tgt: ' + ' '.join(
@@ -243,6 +252,45 @@ class SCANData(object):
       # s += 'pred: ' + ' '.join(
       #   self.tgt_id2word[idx.item()] for idx in out_dict['predictions'][bi][1:slen]) + '\n'
       fd.write(s)
+
+      attn_pred = out_dict['attn_dist_pred'][bi, :len(pred), :slen]
+      attn_ref = out_dict['attn_dist_ref'][bi, :len(tgt), :slen]
+      pred_dist = out_dict['pred_dist'][bi, :len(tgt)]
+      pred_dist_ref = out_dict['pred_dist_ref'][bi, :len(tgt)]
+      # print(slen, len(tgt), attn.shape)
+      # fpath_ref = self.output_path_fig + mode + '_e%d/ref_%d' % (e_id, batch['idx'][bi])
+      # fpath_pred = self.output_path_fig + mode + '_e%d/pred_%d' % (e_id, batch['idx'][bi])
+      fpath = self.output_path_fig + mode + '_e%d/ref_pred_%d' % (e_id, batch['idx'][bi])
+      if(bi in visualized_index and e_id >= self.write_fig_after_epoch):
+        # tmu.save_attn_figure(src, tgt, attn_ref, fpath_ref)
+        # tmu.save_attn_figure(src, pred, attn_pred, fpath_pred)
+        # tmu.save_two_attn_figure(src, pred, tgt, attn_pred, attn_ref, fpath)
+        if(np.random.uniform() > 0.6):
+          tmu.save_attn_pred_figure(src, pred, tgt, attn_pred, attn_ref, 
+            pred_dist, pred_dist_ref, vocab, fpath)
+    return 
+
+  def write_output_full(self, batches, outputs, mode, e_id):
+    fpath_src = self.output_path_fig + mode + '_e%d/src.pkl'
+    fpath_tgt = self.output_path_fig + mode + '_e%d/tgt.pkl'
+    fpath_pred = self.output_path_fig + mode + '_e%d/pred.pkl'
+    fpath_attn_ref = self.output_path_fig + mode + '_e%d/attn_ref.pkl'
+    fpath_attn_pred = self.output_path_fig + mode + '_e%d/attn_pred.pkl'
+    for batch, out_dict in zip(batches, outputs):
+      batch_size = batch['src'].size(0)
+      for bi in range(batch_size):
+        slen = tmu.seq_to_lens(batch['src'][bi])
+        src = [self.src_id2word[idx.item()] for idx in batch['src'][bi][:slen]]
+        
+        tgt = out_dict['tgt_str'][bi].split()
+        tgt = [str(i) + ': ' + t for i, t in enumerate(tgt)]
+
+        pred = out_dict['predictions'][bi].split()
+        pred = [str(i) + ': ' + t for i, t in enumerate(pred)]
+
+        attn_pred = out_dict['attn_dist_pred'][bi, :len(pred), :slen]
+        attn_ref = out_dict['attn_dist_ref'][bi, :len(tgt), :slen]
+        pred_dist = out_dict['pred_dist'][bi, :len(tgt)]
     return 
 
   @staticmethod

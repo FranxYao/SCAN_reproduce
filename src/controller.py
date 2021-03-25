@@ -1,5 +1,6 @@
 import torch 
 import copy
+import os
 
 import numpy as np 
 
@@ -44,6 +45,7 @@ class Controller(object):
     self.print_log_per_nbatch = args.print_log_per_nbatch
     self.model_path = args.model_path
     self.output_path = args.output_path
+    self.output_path_fig = args.output_path_fig
     self.device = args.device
     self.batch_size = args.batch_size
 
@@ -93,6 +95,7 @@ class Controller(object):
 
     n_iter = self.start_epoch * num_batches - 1
     for ei in range(self.start_epoch, self.num_epoch):
+      tmu.refresh_dir(self.output_path_fig + 'train_e' + str(ei))
       model.train()
       # before epoch 
       self.logger.reset()
@@ -122,7 +125,8 @@ class Controller(object):
             tmu.print_grad(model) 
 
           if(self.inspect_model):
-            inspect_dict = model.inspect_step(batch, out_dict, n_iter, ei, bi)
+            inspect_dict = model.inspect_step(
+              batch, out_dict, n_iter, ei, bi, dataset)
             # TODO: print inspect
             
         # if(bi % (self.print_log_per_nbatch // 5) == 0):
@@ -192,6 +196,7 @@ class Controller(object):
     model.eval()
 
     if(self.write_output):
+      tmu.refresh_dir(self.output_path_fig + mode + '_e' + str(ei))
       fd = open(self.output_path +
         self.model_name + '_' + mode + '_epoch_%d.txt' % ei, 'w')
     else: fd = None
@@ -227,7 +232,10 @@ class Controller(object):
         print('.', end=' ', flush=True)
 
       if(self.write_output):
-        dataset.write_output(fd, batch, out_dict)
+        dataset.write_output_batch(fd, batch, out_dict, mode, ei, bi)
+
+    # if(self.write_output):
+    #   dataset.write_output_full(batches, outputs, mode, e_id)
 
     if(self.write_output): fd.close()
     if(self.write_output_full_log): fd_full.close()
