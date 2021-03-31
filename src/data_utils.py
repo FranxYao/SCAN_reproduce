@@ -90,7 +90,6 @@ def get_symbol_cnt(src, tgt):
   else: # do not need seperator 
     src_ = src.split()
     tgt_ = parse_unit_command(src_, add_cnt_symbol=True)
-    assert(' '.join(tgt_) == tgt)
 
   tgt_ret = tgt_
   return tgt_ret
@@ -221,6 +220,7 @@ class SCANData(object):
     self.output_path_fig = output_path_fig
     self.write_fig_after_epoch = write_fig_after_epoch
     self.add_sep = add_sep
+    self.change_counter_to_symbol = change_counter_to_symbol
     
     self.src_word2id = {'<PAD>': 0}
     self.src_id2word = {0: '<PAD>'}
@@ -295,9 +295,7 @@ class SCANData(object):
     if(self.add_sep):
       tgt_word2id, tgt_id2word = tmu.build_vocab(
         train_tgt_sep, start_id=len(self.tgt_word2id))
-    if(self.change_counter_to_symbol):
-      if(self.add_sep): raise ValueError(
-        'add_sep and change_counter_to_symbol cannot be true at the same time')
+    elif(self.change_counter_to_symbol):
       tgt_word2id, tgt_id2word = tmu.build_vocab(
         train_tgt_symbol_cnt, start_id=len(self.tgt_word2id))
     else:
