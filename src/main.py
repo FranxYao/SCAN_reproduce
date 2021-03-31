@@ -127,6 +127,9 @@ def define_argument():
     "--lstm_bidirectional", type=str2bool, 
     nargs='?', const=True, default=True)
 
+  parser.add_argument(
+    "--lambda_align", type=float, default=1.0)
+
   return parser
 
 
@@ -170,6 +173,7 @@ def main():
                           state_size=args.state_size,
                           lstm_layers=args.lstm_layers,
                           dropout=args.dropout,
+                          lambda_align=args.lambda_align,
                           device=args.device
                           )
     model = Seq2seq(learning_rate=args.learning_rate, 

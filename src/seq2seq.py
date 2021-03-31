@@ -1,4 +1,4 @@
-                                              """Sequence to sequence"""
+"""Sequence to sequence"""
 import torch 
 
 import numpy as np 
@@ -68,14 +68,18 @@ class Seq2seqModel(nn.Module):
     dec_mask = dec_targets != self.pad_id
     acc = ((predictions == dec_targets) * dec_mask).sum().float() 
     acc /= dec_mask.sum().float()
+    loss = 0.
+
     loss_lm = -log_prob
-    loss = loss_lm
+    loss += loss_lm
 
     if(alignment is not None):
-      loss_align = alignment[:, :, :enc_max_len] * (attn_dist + 1e-5).log()
-      loss_align = loss_align.sum() / dec_mask.sum()
-      loss += self.lambda_align * loss_align
-    else: loss_align = 0.
+      dec_max_len = attn_dist.size(1)
+      loss_align = alignment[:, :dec_max_len, :enc_max_len] * (attn_dist + 1e-5).log()
+      loss_align = -self.lambda_align * loss_align.sum() / dec_mask.sum()
+      loss += loss_align
+      # print(loss, loss_lm, loss_align)
+    else: loss_align = torch.tensor(0.)
     return loss, loss_lm, loss_align, acc, attn_dist, pred_dist
 
   def predict(self, src):
@@ -124,10 +128,10 @@ class Seq2seq(FRModel):
     self.model.zero_grad()
     if('alignment' in batch): alignment = batch['alignment']
     else: alignment = None
-    loss, loss_lm, loss_align, acc, attn_dist, pred_dist = self.model(batch['src'], 
-                           batch['tgt'],
-                           alignment
-                           )
+    if('tgt_sep' in batch): tgt = batch['tgt_sep']
+    else: tgt = batch['tgt']
+    loss, loss_lm, loss_align, acc, attn_dist, pred_dist =\
+      self.model(batch['src'], tgt, alignment)
     loss.backward()
     self.optimizer.step()
 
@@ -171,19 +175,22 @@ class Seq2seq(FRModel):
       predictions:
     """
     with torch.no_grad():
+      if('tgt_sep' in batch): batch_tgt = batch['tgt_sep']
+      else: batch_tgt = batch['tgt']
+
       loss, loss_lm, loss_align, acc, attn_dist_ref, pred_dist_ref =\
-        self.model(batch['src'], batch['tgt'])
+        self.model(batch['src'], batch_tgt)
       predictions, attn_dist, pred_dist = self.model.predict(batch['src'])
-      tgt_lens = tmu.seq_to_lens(batch['tgt'])
-      tgt_mask = (batch['tgt'] != self.pad_id)
-      max_tgt_len = batch['tgt'].size(1)
+      tgt_lens = tmu.seq_to_lens(batch_tgt)
+      tgt_mask = (batch_tgt != self.pad_id)
+      max_tgt_len = batch_tgt.size(1)
 
     batch_size = batch['src'].size(0)
     tgt_str, pred_str = [], []
     em = 0
     for bi in range(batch_size):
       tgt = []
-      for idx in tmu.to_np(batch['tgt'][bi][1:]):
+      for idx in tmu.to_np(batch_tgt[bi][1:]):
         w = self.tgt_id2word[idx]
         if(w == '<END>'): break
         tgt.append(w)
