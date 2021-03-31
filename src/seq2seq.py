@@ -1,4 +1,4 @@
-"""Sequence to sequence"""
+                                              """Sequence to sequence"""
 import torch 
 
 import numpy as np 
@@ -22,12 +22,14 @@ class Seq2seqModel(nn.Module):
                state_size,
                lstm_layers,
                dropout,
-               device
+               lambda_align=1.0, 
+               device='cpu',
                ):
     """Pytorch seq2seq model"""
     super().__init__()
     self.pad_id = pad_id
     self.device = device
+    self.lambda_align = lambda_align
 
     self.src_embeddings = nn.Embedding(
       src_vocab_size, embedding_size)
@@ -51,7 +53,7 @@ class Seq2seqModel(nn.Module):
 
     return 
 
-  def forward(self, src, tgt):
+  def forward(self, src, tgt, alignment=None):
     enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
     src = self.src_embeddings(src)
     enc_outputs, enc_state = self.encoder(src, enc_lens)
@@ -59,14 +61,22 @@ class Seq2seqModel(nn.Module):
     dec_inputs = self.tgt_embeddings(tgt[:, :-1])
     dec_targets = tgt[:, 1:]
     enc_mask = tmu.length_to_mask(enc_lens, enc_max_len).to(self.device)
+
     log_prob, predictions, attn_dist, pred_dist = self.decoder.decode_train(
       enc_state, dec_inputs, dec_targets, 
       mem_emb=enc_outputs, mem_mask=enc_mask, return_attn=True)
     dec_mask = dec_targets != self.pad_id
     acc = ((predictions == dec_targets) * dec_mask).sum().float() 
     acc /= dec_mask.sum().float()
-    loss = -log_prob
-    return loss, acc, attn_dist, pred_dist
+    loss_lm = -log_prob
+    loss = loss_lm
+
+    if(alignment is not None):
+      loss_align = alignment[:, :, :enc_max_len] * (attn_dist + 1e-5).log()
+      loss_align = loss_align.sum() / dec_mask.sum()
+      loss += self.lambda_align * loss_align
+    else: loss_align = 0.
+    return loss, loss_lm, loss_align, acc, attn_dist, pred_dist
 
   def predict(self, src):
     enc_lens = tmu.seq_to_lens(src, self.pad_id).to('cpu')
@@ -102,8 +112,8 @@ class Seq2seq(FRModel):
     
     self.optimizer = Adam(self.model.parameters(), lr=self.learning_rate)
 
-    self.validation_scores = ['exact_match', 'loss', 'acc']
-    self.log_info = ['loss', 'acc']
+    self.validation_scores = ['exact_match', 'loss_lm', 'acc']
+    self.log_info = ['loss', 'acc', 'loss_lm', 'loss_align']
     self.validation_criteria = 'exact_match'
     return 
 
@@ -112,13 +122,18 @@ class Seq2seq(FRModel):
     Returns
     """
     self.model.zero_grad()
-    loss, acc, attn_dist, _ = self.model(batch['src'], 
-                           batch['tgt']
+    if('alignment' in batch): alignment = batch['alignment']
+    else: alignment = None
+    loss, loss_lm, loss_align, acc, attn_dist, pred_dist = self.model(batch['src'], 
+                           batch['tgt'],
+                           alignment
                            )
     loss.backward()
     self.optimizer.step()
 
     out_dict = {'loss': loss.item(), 
+                'loss_lm': loss_lm.item(),
+                'loss_align': loss_align.item(),
                 'acc': acc.item(), 
                 'attn_dist': tmu.to_np(attn_dist)}
     return out_dict
@@ -156,7 +171,8 @@ class Seq2seq(FRModel):
       predictions:
     """
     with torch.no_grad():
-      loss, acc, attn_dist_ref, pred_dist_ref = self.model(batch['src'], batch['tgt'])
+      loss, loss_lm, loss_align, acc, attn_dist_ref, pred_dist_ref =\
+        self.model(batch['src'], batch['tgt'])
       predictions, attn_dist, pred_dist = self.model.predict(batch['src'])
       tgt_lens = tmu.seq_to_lens(batch['tgt'])
       tgt_mask = (batch['tgt'] != self.pad_id)
@@ -186,6 +202,8 @@ class Seq2seq(FRModel):
 
     out_dict = {'exact_match': exact_match, 
                 'loss': loss.item(),
+                'loss_lm': loss_lm.item(),
+                'loss_align': loss_align.item(),
                 'acc': acc.item(),
                 'tgt_str': tgt_str, 
                 'predictions': pred_str, 
@@ -195,12 +213,12 @@ class Seq2seq(FRModel):
                 'pred_dist': tmu.to_np(pred_dist)}
     return out_dict
 
-  @staticmethod
-  def add_model_specific_args(parent_parser):
-    parser = ArgumentParser(parents=[parent_parser], add_help=False)
-    parser.add_argument(
-      "--lstm_layers", default=1, type=int)
-    parser.add_argument(
-      "--lstm_bidirectional", type=str2bool, 
-      nargs='?', const=True, default=True)
-    return parser
+  # @staticmethod
+  # def add_model_specific_args(parent_parser):
+  #   parser = ArgumentParser(parents=[parent_parser], add_help=False)
+  #   parser.add_argument(
+  #     "--lstm_layers", default=1, type=int)
+  #   parser.add_argument(
+  #     "--lstm_bidirectional", type=str2bool, 
+  #     nargs='?', const=True, default=True)
+  #   return parser

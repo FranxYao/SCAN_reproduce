@@ -21,8 +21,6 @@ def define_argument():
   parser.add_argument(
     "--model_version", default='0.1.0.0', type=str)
   parser.add_argument(
-    "--dataset", default='', type=str)
-  parser.add_argument(
     "--task", default='', type=str)
   parser.add_argument(
     "--model_path", default='../models/', type=str)
@@ -32,6 +30,15 @@ def define_argument():
     "--output_path_fig", default='', type=str)
   parser.add_argument(
     "--tensorboard_path", default='../tensorboard/', type=str)
+
+  # data 
+  parser.add_argument(
+    "--dataset", default='', type=str)
+  parser.add_argument('--split_name', type=str, default='random')
+  parser.add_argument('--require_pos', type=str2bool, 
+    nargs='?', const=True, default=False)
+  parser.add_argument('--add_sep', type=str2bool, 
+    nargs='?', const=True, default=False)
 
   # hardware
   parser.add_argument(
@@ -114,6 +121,11 @@ def define_argument():
     "--src_vocab_size", type=int, default=-1)
   parser.add_argument(
     "--tgt_vocab_size", type=int, default=-1)
+  parser.add_argument(
+    "--lstm_layers", default=1, type=int)
+  parser.add_argument(
+    "--lstm_bidirectional", type=str2bool, 
+    nargs='?', const=True, default=True)
 
   return parser
 
@@ -121,9 +133,9 @@ def define_argument():
 def main():
   # arguments
   parser = define_argument()
-  parser = SCANData.add_data_specific_args(parser)
+  # parser = SCANData.add_data_specific_args(parser)
   # parser = Seq2seq.add_model_specific_args(parser)
-  parser = Seq2seqPos.add_model_specific_args(parser)
+  # parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
 
@@ -140,7 +152,8 @@ def main():
                        batch_size=args.batch_size,
                        require_pos=require_pos,
                        output_path_fig=args.output_path_fig,
-                       write_fig_after_epoch=args.write_fig_after_epoch
+                       write_fig_after_epoch=args.write_fig_after_epoch,
+                       add_sep=args.add_sep
                        )
     dataset.build()
   else: 
@@ -159,13 +172,13 @@ def main():
                           dropout=args.dropout,
                           device=args.device
                           )
-    model = Seq2seq(args.learning_rate, 
-                    args.device, 
-                    dataset.tgt_word2id['<PAD>'], 
-                    dataset.tgt_id2word, 
-                    model_, 
-                    args.output_path_fig,
-                    args.write_fig_after_epoch)
+    model = Seq2seq(learning_rate=args.learning_rate, 
+                    device=args.device, 
+                    pad_id=dataset.tgt_word2id['<PAD>'], 
+                    tgt_id2word=dataset.tgt_id2word, 
+                    model=model_, 
+                    output_path_fig=args.output_path_fig,
+                    write_fig_after_epoch=args.write_fig_after_epoch)
   elif(args.model_name == 'seq2seq_pos'):
     model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
                             use_attention=args.use_attention,

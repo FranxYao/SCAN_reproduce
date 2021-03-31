@@ -1,5 +1,6 @@
 import numpy as np 
 
+from scan_parser import parse_unit_command
 from argparse import ArgumentParser
 from collections import Counter
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -9,7 +10,7 @@ from frtorch import str2bool
 def pipeline(data: list, 
              word2id: dict, 
              add_start_end: bool = False, 
-             dataset_type: str = '') -> np.ndarray:
+             dataset_type: str = ''):
   """
   sentence to list of index, pad or truncate sentence length, return np array
 
@@ -53,8 +54,84 @@ def get_pos(data):
     pos.append(p)
   return pos
 
+def process_alignment(alignment, src_max_len, tgt_max_len):
+  """pad alignment to max length"""
+  dataset_size = len(alignment)
+  alignment_ = np.zeros(shape=[dataset_size, tgt_max_len, src_max_len])
+  for i, a in enumerate(alignment):
+    t_len, s_len = a.shape
+    # print(a.shape)
+    alignment_[i, :t_len, :s_len] = a
+  return alignment_
+
+def get_sep_align(src, tgt):
+  """Add chunk seperator and construct alignment matrix for supervised attention
+
+  Args:
+    src: type=string. source command
+    tgt: type=string. target command
+  """ 
+  if('and' in src):
+    src_ = src.split(' and ')
+    src_len = len(src.split())
+    src_and_id = len(src_[0].split())
+    assert(len(src_) == 2)
+
+    tgt_ = []
+    tgt_0 = parse_unit_command(src_[0].split())
+    tgt_.extend(tgt_0)
+    tgt_and_id = len(tgt_)
+    tgt_.append('AND')
+    tgt_1 = parse_unit_command(src_[1].split())
+    tgt_.extend(tgt_1)
+    tgt_len = len(tgt_)
+    assert(' '.join(tgt_0 + tgt_1) == tgt)
+
+    alignment = np.zeros(shape=[tgt_len, src_len])
+    alignment[tgt_and_id, src_and_id] = 1
+    alignment[tgt_and_id + 1:, src_and_id + 1:] = 1
+    alignment[: tgt_and_id, :src_and_id] = 1
+  elif('after' in src):
+    src_ = src.split(' after ')
+    src_after_id = len(src_[0].split())
+    src_len = len(src.split())
+    assert(len(src_) == 2)
+
+    tgt_ = []
+    tgt_0 = parse_unit_command(src_[1].split())
+    tgt_.extend(tgt_0)
+    tgt_after_id = len(tgt_)
+    tgt_.append('AFTER')
+    tgt_1 = parse_unit_command(src_[0].split())
+    tgt_.extend(tgt_1)
+    tgt_len = len(tgt_)
+    assert(' '.join(tgt_0 + tgt_1) == tgt)
+
+    alignment = np.zeros(shape=[tgt_len, src_len])
+    alignment[tgt_after_id, src_after_id] = 1
+    alignment[tgt_after_id + 1: , :src_after_id] = 1
+    alignment[: tgt_after_id, src_after_id + 1: ] = 1
+  else: # do not need seperator 
+    src_ = src.split()
+    tgt_ = parse_unit_command(src_)
+    assert(' '.join(tgt_) == tgt)
+
+    alignment = np.zeros(shape=[len(tgt_), len(src_)]) + 1.
+
+  tgt_sep = tgt_
+  return tgt_sep, alignment
+
+
 class SCANDataset(Dataset):
-  def __init__(self, src, pos, tgt, require_pos=False):
+  def __init__(self, 
+               src, 
+               pos, 
+               tgt, 
+               tgt_sep=None, 
+               alignment=None, 
+               require_pos=False, 
+               add_sep=False
+               ):
     """
     Args:
       src: source sentences. size = [dataset_size, max_src_len]
@@ -64,7 +141,10 @@ class SCANDataset(Dataset):
     self.src = src
     self.pos = pos
     self.tgt = tgt
+    self.tgt_sep = tgt_sep
+    self.alignment = alignment
     self.require_pos = require_pos
+    self.add_sep = add_sep
     return 
 
   def __len__(self):
@@ -74,19 +154,23 @@ class SCANDataset(Dataset):
     instance = {'src': self.src[idx], 
                 'pos': self.pos[idx], 
                 'tgt': self.tgt[idx],
+                'tgt_sep': self.tgt_sep[idx], 
                 'idx': idx}
+    if(self.alignment is not None):
+      instance['alignment'] = self.alignment[idx]
     return instance
 
 class SCANData(object):
 
   def __init__(self,
-      split_name='random',
-      batch_size=64,
-      num_workers=0,
-      require_pos=False,
-      output_path_fig='',
-      write_fig_after_epoch=10
-    ):
+               split_name='random',
+               batch_size=64,
+               num_workers=0,
+               require_pos=False,
+               output_path_fig='',
+               write_fig_after_epoch=10,
+               add_sep=False
+               ):
     """
     Args:
       split_name: "random", "length", "length_no_new_command"
@@ -99,6 +183,7 @@ class SCANData(object):
     self.require_pos = require_pos
     self.output_path_fig = output_path_fig
     self.write_fig_after_epoch = write_fig_after_epoch
+    self.add_sep = add_sep
     
     self.src_word2id = {'<PAD>': 0}
     self.src_id2word = {0: '<PAD>'}
@@ -149,49 +234,121 @@ class SCANData(object):
     train_pos = get_pos(train_src)
     train_tgt = [d.split(' OUT: ')[1].split() for d in train_data]
 
+    if(self.add_sep):
+      train_tgt_sep = []
+      train_alignment = []
+      for src, tgt in zip(train_src, train_tgt):
+        tgt_sep, alignment = get_sep_align(' '.join(src), ' '.join(tgt))
+        train_tgt_sep.append(tgt_sep)
+        train_alignment.append(alignment)
+
     src_word2id, src_id2word = tmu.build_vocab(
       train_src, start_id=len(self.src_word2id)) 
     self.src_word2id.update(src_word2id)
     self.src_id2word.update(src_id2word)
     self.src_vocab_size = len(self.src_word2id)
 
-    tgt_word2id, tgt_id2word = tmu.build_vocab(
-      train_tgt, start_id=len(self.tgt_word2id))
+    if(self.add_sep):
+      tgt_word2id, tgt_id2word = tmu.build_vocab(
+        train_tgt_sep, start_id=len(self.tgt_word2id))
+    else:
+      tgt_word2id, tgt_id2word = tmu.build_vocab(
+        train_tgt, start_id=len(self.tgt_word2id))
+
     self.tgt_word2id.update(tgt_word2id)
     self.tgt_id2word.update(tgt_id2word)
     self.tgt_vocab_size = len(self.tgt_word2id)
 
-    train_src, _ = pipeline(train_src, self.src_word2id, False, 'train_src')
+    train_src, train_src_max_len =\
+      pipeline(train_src, self.src_word2id, False, 'train_src')
     train_pos, _ = pipeline(train_pos, self.pos_word2id, False, 'train_pos')
     train_tgt, train_tgt_max_len =\
       pipeline(train_tgt, self.tgt_word2id, True, 'train_tgt')
-    self.train_dataset = SCANDataset(
-      train_src, train_pos, train_tgt, self.require_pos)
+    if(self.add_sep):
+      train_tgt_sep, train_tgt_sep_max_len =\
+        pipeline(train_tgt_sep, self.tgt_word2id, True, 'train_tgt_sep')
+      train_alignment = process_alignment(
+        train_alignment, train_src_max_len, train_tgt_sep_max_len)
+    else: 
+      train_tgt_sep = None
+      train_alignment = None
+
+    self.train_dataset = SCANDataset(train_src, 
+                                     train_pos, 
+                                     train_tgt, 
+                                     train_tgt_sep, 
+                                     train_alignment, 
+                                     self.require_pos, 
+                                     self.add_sep)
 
     # dev 
     dev_src = [d.split(' OUT: ')[0][4:].split() for d in dev_data] 
     dev_pos = get_pos(dev_src)
     dev_tgt = [d.split(' OUT: ')[1].split() for d in dev_data]
+
+    if(self.add_sep):
+      dev_tgt_sep = []
+      for src, tgt in zip(dev_src, dev_tgt):
+        tgt_sep, _ = get_sep_align(' '.join(src), ' '.join(tgt))
+        dev_tgt_sep.append(tgt_sep)
+
     dev_src, _ = pipeline(dev_src, self.src_word2id, False, 'dev_src')
     dev_pos, _ = pipeline(dev_pos, self.pos_word2id, False, 'dev_pos')
     dev_tgt, dev_tgt_max_len =\
       pipeline(dev_tgt, self.tgt_word2id, True, 'dev_tgt')
-    self.dev_dataset = SCANDataset(
-      dev_src, dev_pos, dev_tgt, self.require_pos)
+
+    if(self.add_sep):
+      dev_tgt_sep, dev_tgt_sep_max_len =\
+        pipeline(dev_tgt_sep, self.tgt_word2id, True, 'dev_tgt_sep')
+      dev_alignment = None
+    else: 
+      dev_tgt_sep, dev_alignment = None, None
+    
+    self.dev_dataset = SCANDataset(dev_src, 
+                                   dev_pos, 
+                                   dev_tgt, 
+                                   dev_tgt_sep,
+                                   dev_alignment, 
+                                   self.require_pos,
+                                   self.add_sep)
 
     # test
     test_src = [d.split(' OUT: ')[0][4:].split() for d in test_data] 
     test_pos = get_pos(test_src)
     test_tgt = [d.split(' OUT: ')[1].split() for d in test_data]
+
+    if(self.add_sep):
+      test_tgt_sep = []
+      for src, tgt in zip(test_src, test_tgt):
+        tgt_sep, _ = get_sep_align(' '.join(src), ' '.join(tgt))
+        test_tgt_sep.append(tgt_sep)
+
     test_src, _ = pipeline(test_src, self.src_word2id, False, 'test_src')
     test_pos, _ = pipeline(test_pos, self.pos_word2id, False, 'test_pos')
     test_tgt, test_tgt_max_len =\
       pipeline(test_tgt, self.tgt_word2id, True, 'test_tgt')
-    self.test_dataset = SCANDataset(
-      test_src, test_pos, test_tgt, self.require_pos)
+
+    if(self.add_sep):
+      test_tgt_sep, test_tgt_sep_max_len =\
+        pipeline(test_tgt_sep, self.tgt_word2id, True, 'test_tgt_sep')
+      test_alignment = None
+    else:
+      test_tgt_sep, test_alignment = None, None
+    
+    self.test_dataset = SCANDataset(test_src, 
+                                    test_pos, 
+                                    test_tgt, 
+                                    test_tgt_sep, 
+                                    test_alignment,
+                                    self.require_pos,
+                                    self.add_sep)
 
     self.max_dec_len =\
       max([train_tgt_max_len, dev_tgt_max_len, test_tgt_max_len]) + 1
+    if(self.add_sep):
+      self.max_dec_len =\
+        max([train_tgt_sep_max_len, dev_tgt_sep_max_len, test_tgt_sep_max_len])\
+        + 1
     print('... Finished!')
     return 
 
@@ -293,10 +450,10 @@ class SCANData(object):
         pred_dist = out_dict['pred_dist'][bi, :len(tgt)]
     return 
 
-  @staticmethod
-  def add_data_specific_args(parent_parser):
-    parser = ArgumentParser(parents=[parent_parser], add_help=False)
-    parser.add_argument('--split_name', type=str, default='random')
-    parser.add_argument('--require_pos', type=str2bool, 
-      nargs='?', const=True, default=False)
-    return parser
+  # @staticmethod
+  # def add_data_specific_args(parent_parser):
+  #   parser = ArgumentParser(parents=[parent_parser], add_help=False)
+  #   parser.add_argument('--split_name', type=str, default='random')
+  #   parser.add_argument('--require_pos', type=str2bool, 
+  #     nargs='?', const=True, default=False)
+  #   return parser
