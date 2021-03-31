@@ -39,6 +39,8 @@ def define_argument():
     nargs='?', const=True, default=False)
   parser.add_argument('--add_sep', type=str2bool, 
     nargs='?', const=True, default=False)
+  parser.add_argument('--change_counter_to_symbol', type=str2bool, 
+    nargs='?', const=True, default=False)
 
   # hardware
   parser.add_argument(
@@ -156,7 +158,8 @@ def main():
                        require_pos=require_pos,
                        output_path_fig=args.output_path_fig,
                        write_fig_after_epoch=args.write_fig_after_epoch,
-                       add_sep=args.add_sep
+                       add_sep=args.add_sep,
+                       change_counter_to_symbol=args.change_counter_to_symbol
                        )
     dataset.build()
   else: 

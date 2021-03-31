@@ -64,6 +64,37 @@ def process_alignment(alignment, src_max_len, tgt_max_len):
     alignment_[i, :t_len, :s_len] = a
   return alignment_
 
+def get_symbol_cnt(src, tgt):
+  if('and' in src):
+    src_ = src.split(' and ')
+    assert(len(src_) == 2)
+
+    tgt_ = []
+    tgt_0 = parse_unit_command(src_[0].split(), add_cnt_symbol=True)
+    tgt_.extend(tgt_0)
+    tgt_.append('AND')
+    tgt_1 = parse_unit_command(src_[1].split(), add_cnt_symbol=True)
+    tgt_.extend(tgt_1)
+
+  elif('after' in src):
+    src_ = src.split(' after ')
+    assert(len(src_) == 2)
+
+    tgt_ = []
+    tgt_0 = parse_unit_command(src_[1].split(), add_cnt_symbol=True)
+    tgt_.extend(tgt_0)
+    tgt_.append('AFTER')
+    tgt_1 = parse_unit_command(src_[0].split(), add_cnt_symbol=True)
+    tgt_.extend(tgt_1)
+
+  else: # do not need seperator 
+    src_ = src.split()
+    tgt_ = parse_unit_command(src_, add_cnt_symbol=True)
+    assert(' '.join(tgt_) == tgt)
+
+  tgt_ret = tgt_
+  return tgt_ret
+
 def get_sep_align(src, tgt):
   """Add chunk seperator and construct alignment matrix for supervised attention
 
@@ -128,6 +159,7 @@ class SCANDataset(Dataset):
                pos, 
                tgt, 
                tgt_sep=None, 
+               tgt_symbol_cnt=None, 
                alignment=None, 
                require_pos=False, 
                add_sep=False
@@ -142,6 +174,7 @@ class SCANDataset(Dataset):
     self.pos = pos
     self.tgt = tgt
     self.tgt_sep = tgt_sep
+    self.tgt_symbol_cnt = tgt_symbol_cnt
     self.alignment = alignment
     self.require_pos = require_pos
     self.add_sep = add_sep
@@ -154,10 +187,13 @@ class SCANDataset(Dataset):
     instance = {'src': self.src[idx], 
                 'pos': self.pos[idx], 
                 'tgt': self.tgt[idx],
-                'tgt_sep': self.tgt_sep[idx], 
                 'idx': idx}
     if(self.alignment is not None):
       instance['alignment'] = self.alignment[idx]
+    if(self.tgt_sep is not None):
+      instance['tgt_sep'] = self.tgt_sep[idx]
+    if(self.tgt_symbol_cnt is not None):
+      instance['tgt_symbol_cnt'] = self.tgt_symbol_cnt[idx]
     return instance
 
 class SCANData(object):
@@ -169,7 +205,8 @@ class SCANData(object):
                require_pos=False,
                output_path_fig='',
                write_fig_after_epoch=10,
-               add_sep=False
+               add_sep=False,
+               change_counter_to_symbol=False
                ):
     """
     Args:
@@ -229,7 +266,7 @@ class SCANData(object):
     train_data, dev_data = random_split(train_data, [train_len, dev_len])
     test_data = open(test_path).readlines()
 
-    # train
+    ## train
     train_src = [d.split(' OUT: ')[0][4:].split() for d in train_data] 
     train_pos = get_pos(train_src)
     train_tgt = [d.split(' OUT: ')[1].split() for d in train_data]
@@ -242,15 +279,27 @@ class SCANData(object):
         train_tgt_sep.append(tgt_sep)
         train_alignment.append(alignment)
 
+    if(self.change_counter_to_symbol):
+      train_tgt_symbol_cnt = []
+      for src, tgt in zip(train_src, train_tgt):
+        tgt_symbol_cnt = get_symbol_cnt(' '.join(src), ' '.join(tgt))
+        train_tgt_symbol_cnt.append(tgt_symbol_cnt)
+
     src_word2id, src_id2word = tmu.build_vocab(
       train_src, start_id=len(self.src_word2id)) 
     self.src_word2id.update(src_word2id)
     self.src_id2word.update(src_id2word)
     self.src_vocab_size = len(self.src_word2id)
 
+    # TODO: update the solution for the dictionary, currently on too messy
     if(self.add_sep):
       tgt_word2id, tgt_id2word = tmu.build_vocab(
         train_tgt_sep, start_id=len(self.tgt_word2id))
+    if(self.change_counter_to_symbol):
+      if(self.add_sep): raise ValueError(
+        'add_sep and change_counter_to_symbol cannot be true at the same time')
+      tgt_word2id, tgt_id2word = tmu.build_vocab(
+        train_tgt_symbol_cnt, start_id=len(self.tgt_word2id))
     else:
       tgt_word2id, tgt_id2word = tmu.build_vocab(
         train_tgt, start_id=len(self.tgt_word2id))
@@ -264,6 +313,7 @@ class SCANData(object):
     train_pos, _ = pipeline(train_pos, self.pos_word2id, False, 'train_pos')
     train_tgt, train_tgt_max_len =\
       pipeline(train_tgt, self.tgt_word2id, True, 'train_tgt')
+
     if(self.add_sep):
       train_tgt_sep, train_tgt_sep_max_len =\
         pipeline(train_tgt_sep, self.tgt_word2id, True, 'train_tgt_sep')
@@ -273,15 +323,21 @@ class SCANData(object):
       train_tgt_sep = None
       train_alignment = None
 
+    if(self.change_counter_to_symbol):
+      train_tgt_symbol_cnt, train_tgt_symbol_cnt_max_len =\
+        pipeline(train_tgt_symbol_cnt, self.tgt_word2id, True, 'train_tgt_symbol_cnt')
+    else: train_tgt_symbol_cnt = None
+
     self.train_dataset = SCANDataset(train_src, 
                                      train_pos, 
                                      train_tgt, 
                                      train_tgt_sep, 
+                                     train_tgt_symbol_cnt, 
                                      train_alignment, 
                                      self.require_pos, 
                                      self.add_sep)
 
-    # dev 
+    ## dev 
     dev_src = [d.split(' OUT: ')[0][4:].split() for d in dev_data] 
     dev_pos = get_pos(dev_src)
     dev_tgt = [d.split(' OUT: ')[1].split() for d in dev_data]
@@ -292,27 +348,39 @@ class SCANData(object):
         tgt_sep, _ = get_sep_align(' '.join(src), ' '.join(tgt))
         dev_tgt_sep.append(tgt_sep)
 
+    if(self.change_counter_to_symbol):
+      dev_tgt_symbol_cnt = []
+      for src, tgt in zip(dev_src, dev_tgt):
+        tgt_symbol_cnt = get_symbol_cnt(' '.join(src), ' '.join(tgt))
+        dev_tgt_symbol_cnt.append(tgt_symbol_cnt)
+
     dev_src, _ = pipeline(dev_src, self.src_word2id, False, 'dev_src')
     dev_pos, _ = pipeline(dev_pos, self.pos_word2id, False, 'dev_pos')
     dev_tgt, dev_tgt_max_len =\
       pipeline(dev_tgt, self.tgt_word2id, True, 'dev_tgt')
 
     if(self.add_sep):
-      dev_tgt_sep, dev_tgt_sep_max_len =\
+      dev_tgt_sep, dev_tgt_max_len =\
         pipeline(dev_tgt_sep, self.tgt_word2id, True, 'dev_tgt_sep')
       dev_alignment = None
     else: 
       dev_tgt_sep, dev_alignment = None, None
+
+    if(self.change_counter_to_symbol):
+      dev_tgt_symbol_cnt, dev_tgt_max_len = pipeline(
+        dev_tgt_symbol_cnt, self.tgt_word2id, True, 'dev_tgt_symbol_cnt')
+    else: dev_tgt_symbol_cnt = None
     
     self.dev_dataset = SCANDataset(dev_src, 
                                    dev_pos, 
                                    dev_tgt, 
                                    dev_tgt_sep,
+                                   dev_tgt_symbol_cnt, 
                                    dev_alignment, 
                                    self.require_pos,
                                    self.add_sep)
 
-    # test
+    ## test
     test_src = [d.split(' OUT: ')[0][4:].split() for d in test_data] 
     test_pos = get_pos(test_src)
     test_tgt = [d.split(' OUT: ')[1].split() for d in test_data]
@@ -323,32 +391,40 @@ class SCANData(object):
         tgt_sep, _ = get_sep_align(' '.join(src), ' '.join(tgt))
         test_tgt_sep.append(tgt_sep)
 
+    if(self.change_counter_to_symbol):
+      test_tgt_symbol_cnt = []
+      for src, tgt in zip(test_src, test_tgt):
+        tgt_symbol_cnt = get_symbol_cnt(' '.join(src), ' '.join(tgt))
+        test_tgt_symbol_cnt.append(tgt_symbol_cnt)
+
     test_src, _ = pipeline(test_src, self.src_word2id, False, 'test_src')
     test_pos, _ = pipeline(test_pos, self.pos_word2id, False, 'test_pos')
     test_tgt, test_tgt_max_len =\
       pipeline(test_tgt, self.tgt_word2id, True, 'test_tgt')
 
     if(self.add_sep):
-      test_tgt_sep, test_tgt_sep_max_len =\
+      test_tgt_sep, test_tgt_max_len =\
         pipeline(test_tgt_sep, self.tgt_word2id, True, 'test_tgt_sep')
       test_alignment = None
     else:
       test_tgt_sep, test_alignment = None, None
+
+    if(self.change_counter_to_symbol):
+      test_tgt_symbol_cnt, test_tgt_max_len = pipeline(
+        test_tgt_symbol_cnt, self.tgt_word2id, True, 'test_tgt_symbol_cnt')
+    else: test_tgt_symbol_cnt = None
     
     self.test_dataset = SCANDataset(test_src, 
                                     test_pos, 
                                     test_tgt, 
                                     test_tgt_sep, 
+                                    test_tgt_symbol_cnt, 
                                     test_alignment,
                                     self.require_pos,
                                     self.add_sep)
 
     self.max_dec_len =\
       max([train_tgt_max_len, dev_tgt_max_len, test_tgt_max_len]) + 1
-    if(self.add_sep):
-      self.max_dec_len =\
-        max([train_tgt_sep_max_len, dev_tgt_sep_max_len, test_tgt_sep_max_len])\
-        + 1
     print('... Finished!')
     return 
 
@@ -449,11 +525,3 @@ class SCANData(object):
         attn_ref = out_dict['attn_dist_ref'][bi, :len(tgt), :slen]
         pred_dist = out_dict['pred_dist'][bi, :len(tgt)]
     return 
-
-  # @staticmethod
-  # def add_data_specific_args(parent_parser):
-  #   parser = ArgumentParser(parents=[parent_parser], add_help=False)
-  #   parser.add_argument('--split_name', type=str, default='random')
-  #   parser.add_argument('--require_pos', type=str2bool, 
-  #     nargs='?', const=True, default=False)
-  #   return parser

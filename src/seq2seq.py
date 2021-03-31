@@ -94,7 +94,7 @@ class Seq2seqModel(nn.Module):
     return predictions, attn_dist, pred_dist
 
 class Seq2seq(FRModel):
-
+  """"""
   def __init__(self, 
                learning_rate,
                device,
@@ -126,10 +126,14 @@ class Seq2seq(FRModel):
     Returns
     """
     self.model.zero_grad()
+
     if('alignment' in batch): alignment = batch['alignment']
     else: alignment = None
+
     if('tgt_sep' in batch): tgt = batch['tgt_sep']
+    elif('tgt_symbol_cnt' in batch): tgt = batch['tgt_symbol_cnt']
     else: tgt = batch['tgt']
+
     loss, loss_lm, loss_align, acc, attn_dist, pred_dist =\
       self.model(batch['src'], tgt, alignment)
     loss.backward()
@@ -148,7 +152,11 @@ class Seq2seq(FRModel):
     batch_size = attn_dist.shape[0]
     visualized_index = np.random.choice(batch_size, 3, False)
     src = tmu.to_np(batch['src'])
-    tgt = tmu.to_np(batch['tgt'])
+
+    if('tgt_sep' in batch): tgt = batch['tgt_sep']
+    elif('tgt_symbol_cnt' in batch): tgt = batch['tgt_symbol_cnt']
+    else: tgt = batch['tgt']
+    tgt = tmu.to_np(tgt)
     if(ei >= self.write_fig_after_epoch):
       for bi in visualized_index:
         slen_src = tmu.seq_to_lens(batch['src'][bi])
@@ -176,6 +184,7 @@ class Seq2seq(FRModel):
     """
     with torch.no_grad():
       if('tgt_sep' in batch): batch_tgt = batch['tgt_sep']
+      elif('tgt_symbol_cnt' in batch): batch_tgt = batch['tgt_symbol_cnt']
       else: batch_tgt = batch['tgt']
 
       loss, loss_lm, loss_align, acc, attn_dist_ref, pred_dist_ref =\
@@ -220,12 +229,3 @@ class Seq2seq(FRModel):
                 'pred_dist': tmu.to_np(pred_dist)}
     return out_dict
 
-  # @staticmethod
-  # def add_model_specific_args(parent_parser):
-  #   parser = ArgumentParser(parents=[parent_parser], add_help=False)
-  #   parser.add_argument(
-  #     "--lstm_layers", default=1, type=int)
-  #   parser.add_argument(
-  #     "--lstm_bidirectional", type=str2bool, 
-  #     nargs='?', const=True, default=True)
-  #   return parser
