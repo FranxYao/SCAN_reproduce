@@ -196,7 +196,8 @@ class Controller(object):
     model.eval()
 
     if(self.write_output):
-      tmu.refresh_dir(self.output_path_fig + mode + '_e' + str(ei))
+      tmu.refresh_dir(self.output_path_fig + mode + '_e' + str(ei) + '/right/')
+      tmu.refresh_dir(self.output_path_fig + mode + '_e' + str(ei) + '/wrong/')
       fd = open(self.output_path +
         self.model_name + '_' + mode + '_epoch_%d.txt' % ei, 'w')
     else: fd = None

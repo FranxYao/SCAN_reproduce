@@ -476,6 +476,8 @@ class SCANData(object):
       pred = out_dict['predictions'][bi].split()
       pred = [str(i) + ': ' + t for i, t in enumerate(pred)]
 
+      is_correct = ' '.join(tgt) == ' '.join(pred)
+
       # slen = tmu.seq_to_lens(batch['tgt'][bi])
       # s += 'tgt: ' + ' '.join(
       #   self.tgt_id2word[idx.item()] for idx in batch['tgt'][bi][1:slen]) + '\n'
@@ -491,7 +493,10 @@ class SCANData(object):
       # print(slen, len(tgt), attn.shape)
       # fpath_ref = self.output_path_fig + mode + '_e%d/ref_%d' % (e_id, batch['idx'][bi])
       # fpath_pred = self.output_path_fig + mode + '_e%d/pred_%d' % (e_id, batch['idx'][bi])
-      fpath = self.output_path_fig + mode + '_e%d/ref_pred_%d' % (e_id, batch['idx'][bi])
+      if(is_correct):
+        fpath = self.output_path_fig + mode + '_e%d/right/ref_pred_%d' % (e_id, batch['idx'][bi])
+      else:
+        fpath = self.output_path_fig + mode + '_e%d/wrong/ref_pred_%d' % (e_id, batch['idx'][bi])
       if(bi in visualized_index and e_id >= self.write_fig_after_epoch):
         # tmu.save_attn_figure(src, tgt, attn_ref, fpath_ref)
         # tmu.save_attn_figure(src, pred, attn_pred, fpath_pred)

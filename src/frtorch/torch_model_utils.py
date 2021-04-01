@@ -591,6 +591,10 @@ def save_attn_pred_figure(src, pred, ref, attn_pred, attn_ref,
   attn_pred_[:attn_pred_len] = attn_pred
   attn_ref_ = np.zeros(shape=(attn_max_len, attn_src_len))
   attn_ref_[:attn_ref_len] = attn_ref
+
+  pred_dist_ref = pred_dist_ref[:, 2:]
+  vocab = vocab[2:]
+  pred_dist = pred_dist[:, 2:]
   
   fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(16,6))
   fig.tight_layout(pad=4.0)
@@ -910,4 +914,4 @@ def refresh_dir(d):
     print('removing existing dir: %s' % d)
     shutil.rmtree(d)
   print('creating dir: %s' % d)
-  os.mkdir(d)
+  os.makedirs(d)
