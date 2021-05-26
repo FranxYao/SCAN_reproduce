@@ -24,23 +24,30 @@ class Seq2seqModel(nn.Module):
                dropout,
                lambda_align=1.0, 
                device='cpu',
+               encoder_type='lstm'
                ):
     """Pytorch seq2seq model"""
     super().__init__()
     self.pad_id = pad_id
     self.device = device
     self.lambda_align = lambda_align
+    self.encoder_type = encoder_type
 
     self.src_embeddings = nn.Embedding(
       src_vocab_size, embedding_size)
     self.tgt_embeddings = nn.Embedding(
       tgt_vocab_size, embedding_size)
-    self.encoder = LSTMEncoder(state_size=state_size, 
-                               lstm_layers=lstm_layers,
-                               dropout=dropout, 
-                               embedding_size=embedding_size,
-                               device=device
-                               )
+    if(encoder_type == 'lstm'):
+      self.encoder = LSTMEncoder(state_size=state_size, 
+                                lstm_layers=lstm_layers,
+                                dropout=dropout, 
+                                embedding_size=embedding_size,
+                                device=device
+                                )
+    elif(encoder_type == 'bert'):
+      self.encoder = ... # TBC
+    else:
+      raise NotImplementedError('encode %s not supported' % encoder_type)
     self.decoder = LSTMDecoder(pad_id=pad_id,
                                start_id=start_id,
                                vocab_size=tgt_vocab_size,

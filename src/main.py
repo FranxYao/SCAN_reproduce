@@ -2,7 +2,8 @@ import argparse
 import torch
 import sys
 
-from data_utils import SCANData
+from data_utils.scan import SCANData
+from data_utils.text2sql import Text2Sql
 from seq2seq import Seq2seq, Seq2seqModel
 from seq2seq_pos import Seq2seqPos, Seq2seqPosModel
 
@@ -162,6 +163,10 @@ def main():
                        change_counter_to_symbol=args.change_counter_to_symbol
                        )
     dataset.build()
+  elif(args.dataset == 'atis'):
+    dataset = Text2Sql(...) # TBC
+  elif(args.dataset == 'geoquery'):
+    dataset = Text2Sql(...) # TBC 
   else: 
     raise NotImplementedError('dataset %s not implemented' % args.dataset)
 
