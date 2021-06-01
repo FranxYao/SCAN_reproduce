@@ -151,94 +151,6 @@ def print_indent(level):
     print('  ')
   return 
 
-# def parse_sub_struct(sql):
-#   """Parse a SQL into substructures"""
-#   # structure: level: [head, child1, child2 ...]
-#   level_heads = {-1: [['ROOT']]}
-#   output_rules = []
-
-#   level = 0
-#   sql = sql.split()
-#   buffer = []
-#   prev_parenthesis_level = [] 
-#   if(fd is None):
-#     fd = sys.stdout
-#   for ti, token in enumerate(sql):
-#     if(token == 'SELECT'):
-#       if(sql[ti + 1] == 'DISTINCT'):
-#         print('..' * level + 'SELECT DISTINCT', file=fd)
-#         level_heads[level - 1][-1].append('SELECT DISTINCT')
-#         level_heads[level] = [['SELECT DISTINCT']]
-#       else: 
-#         print('..' * level + 'SELECT', file=fd)
-#         level_heads[level - 1][-1].append('SELECT')
-#         level_heads[level] = [['SELECT']]
-#       level += 1
-#     elif(token == 'DISTINCT'): pass
-#     elif(token == ','):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#         level_heads[level - 1][-1].append(' '.join(buffer))
-#     elif(token == 'FROM'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       print('..' * (level - 1) + 'FROM', file=fd)
-#       level_heads[level - 2][-1].append('FROM')
-#       level_heads[level - 1][-1].append(' '.join(buffer))
-#       output_rules.append(level_heads[level - 1].pop())
-#       level_heads[level - 1].append(['FROM'])
-
-#     elif(token == 'WHERE'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       print('..' * (level - 1) + 'WHERE', file=fd)
-#     elif(token == 'AND'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       print('..' * level + 'AND', file=fd)
-#     elif(token == 'OR'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       print('..' * level + 'OR', file=fd)
-#     elif(token == '('):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       print('..' * (level) + '(', file=fd)
-#       buffer = []
-#       prev_parenthesis_level.append(level)
-#       level += 1
-#       # if(sql[ti - 1] in ['MIN', 'MAX', 'COUNT']):
-#         # prev_parenthesis_level.append(level)
-#         # level += 1
-#       # else: 
-#       #   prev_parenthesis_level.append(level - 1)
-#     elif(token == ')'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#       level = prev_parenthesis_level.pop()
-#       print('..' * (level) + ')', file=fd)
-#     elif(token == ';'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         buffer = []
-#     elif(token == 'IN'):
-#       if(len(buffer) > 0):
-#         print('..' * level + ' '.join(buffer), file=fd)
-#         print('..' * level + 'IN', file=fd)
-#         buffer = []
-#     else:
-#       buffer.append(token)
-#   assert(len(buffer) == 0)
-#   return 
-
-
 def print_sql_as_tree(sql, fd = None, relax=False):
   level = 0
   if(not isinstance(sql, list)):
@@ -336,7 +248,7 @@ def process_all_or_cond(cond):
 
   while(not finished_process):
     # try to process next OR statement
-    or_left, or_right, cond_simple, next_ind =\
+    or_left, or_right, cond_simple, next_ind, left_nest =\
       process_single_or(cond_simple, next_ind, num_or)
     if(next_ind == -1): 
       finished_process = True 
@@ -351,6 +263,7 @@ def process_all_or_cond(cond):
 
     if(next_ind > 0):
       nested_or = True
+    if(left_nest): nested_or = True
 
   for i, ci in enumerate(cond_simple):
     if(i >= 2 and ci[-3:] == 'OR]' and cond_simple[i - 2][-3:] == 'OR]'):
@@ -359,6 +272,8 @@ def process_all_or_cond(cond):
 
 def process_single_or(cond, next_ind, num_or):
   """Find the OR clauses 
+  Algorithm:
+
   Args:
 
   Returns:
@@ -367,11 +282,21 @@ def process_single_or(cond, next_ind, num_or):
   """
   cond = copy.deepcopy(cond)
   # print('single pass processing OR')
+  # print_sql_as_tree(cond)
   # print(cond)
   def test_cond_boundary(ci):
     boundary_keywords = ['AND', 'OR', '(', ')', '', 'NOT', 'SELECT', 'WHERE', '[OR]']
-    if(ci in boundary_keywords): return True
-    if(ci[-3:] == 'OR]'): return True 
+    if(ci in boundary_keywords): 
+      # print('D1', ci)
+      return True
+    if(ci[-3:] == 'OR]'): 
+      # print('D2', ci)
+      return True 
+    return False
+
+  def contain_or_left(left):
+    for ci in left:
+      if(ci[-3:] == 'OR]'): return True
     return False
 
   cond_len = len(cond)
@@ -384,7 +309,7 @@ def process_single_or(cond, next_ind, num_or):
   ind = i
   if(ind == len(cond) - 1): 
     next_ind = -1
-    return None, None, cond, next_ind
+    return None, None, cond, next_ind, False
 
   or_left = []
   i = ind - 1
@@ -435,18 +360,23 @@ def process_single_or(cond, next_ind, num_or):
 
   # trial success
   if('OR' not in or_right):
-    if(cond[left_boundary - 1] == '(' and cond[right_boundary] == ')'):
+    if(cond[left_boundary - 1] == '(' and cond[right_boundary + 1] == ')'):
       left_boundary -= 1
       right_boundary += 1
-    cond_simple = cond[: left_boundary] + ['S1', '[%d:OR]' % num_or, 'S2'] + cond[right_boundary + 1: ]
+    cond_simple = cond[: left_boundary]\
+                  + ['S1', '[%d:OR]' % num_or, 'S2']\
+                  + cond[right_boundary + 1: ]
     or_left.reverse()
+
+    if(contain_or_left(or_left)): left_nest = True
+    else: left_nest = False
 
     if('NOT' not in or_left): or_left = remove_parenthesis(or_left).split()
     if('NOT' not in or_right): or_right = remove_parenthesis(or_right).split()
-    return or_left, or_right, cond_simple, 0
+    return or_left, or_right, cond_simple, 0, left_nest
   else: 
     cond_simple = cond
-    return None, None, cond_simple, ind + 1
+    return None, None, cond_simple, ind + 1, False
 
 def remove_parenthesis(cond):
   cond = copy.deepcopy(cond)
@@ -455,23 +385,31 @@ def remove_parenthesis(cond):
   
   cond_simple = re.sub(' +', ' ', 
       ' '.join(cond).replace('(', '').replace(')', ''))
+
+  if(cond_simple[0] == ' '): cond_simple = cond_simple[1:]
+  if(cond_simple[-1] == ' '): cond_simple = cond_simple[:-1]
   return cond_simple
 
 def sort_simple_condition(cond):
   cond = copy.deepcopy(cond)
   cond = cond.split(' ')
   if('[0:OR]' in cond):
-    for i in range(len(cond)):
-      x = cond[i]
-      if(x == '[0:OR]'): break 
-    cond = cond[: i - 1] + cond[i + 2:]
-    cond = ' '.join(cond).split(' AND ')
-    cond.sort()
-    cond = 'S1[0:OR]S2' + ' AND '.join(cond)
+    if(len(cond) > 3):
+      all_cond = ' '.join(cond).split(' AND ')
+      or_cond = [ci for ci in all_cond if 'OR]' in ci]
+      or_cond = [''.join(ci.split(' ')) for ci in or_cond]
+      general_cond = [ci for ci in all_cond if 'OR]' not in ci]
+
+      cond = ' AND '.join(or_cond)
+      if(len(general_cond) > 0):
+        cond = cond + ' AND ' + ' AND '.join(general_cond) 
+    else: 
+      cond = 'S1[0:OR]S2'
   else: 
     cond = ' '.join(cond).split(' AND ')
     cond.sort()
     cond = ' AND '.join(cond)
+  
   return cond
 
 def get_condition(sql):
@@ -507,12 +445,16 @@ def simplify_condition(cond):
     ret_code = 2
 
     if(chained_or or nested_or): ret_code = 3
+    # print('!!!')
+    # print(ret_code)
   else: 
     ret_code = 0
     cond_simple = cond
   return ret_code, cond_simple
 
 def simplify_sql(sql):
+  if('WHERE' not in sql):
+    return 1, sql, sql
   cond_ind, cond = get_condition(sql)
 
   cond = cond.replace('IS NOT NULL', 'IS-NOT-NULL')
@@ -520,9 +462,9 @@ def simplify_sql(sql):
   ret_code, cond_simple = simplify_condition(cond)
 
   if(ret_code == 1):
-    sql_simple = sql[: cond_ind] + ' WHERE ' + cond_simple
+    sql_simple = sql[: cond_ind] + 'WHERE ' + cond_simple
   elif(ret_code in [2, 3]):
-    sql_simple = sql[: cond_ind] + ' WHERE ' + cond_simple['cond_simple']
+    sql_simple = sql[: cond_ind] + 'WHERE ' + cond_simple['cond_simple']
   else: 
     sql_simple = sql
 
