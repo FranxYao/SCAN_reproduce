@@ -419,7 +419,11 @@ def get_condition(sql):
   return cond_ind, cond
 
 def simplify_condition(cond):
-  """Simplifiy the SQL conditions, currently no nest
+  """Simplifiy the SQL conditions, currently no nest, see cases in the jupyter 
+  notebook Text2seq_Atis.ipynb
+
+  * remove nested brackets
+  * if there is an OR statement then condense it
   
   Args:
     cond: condition terms in WHERE clauses
@@ -453,6 +457,10 @@ def simplify_condition(cond):
   return ret_code, cond_simple
 
 def simplify_sql(sql):
+  """
+  * Get the condition part of SQL
+  * Simplify the condition part
+  """
   if('WHERE' not in sql):
     return 1, sql, sql
   cond_ind, cond = get_condition(sql)

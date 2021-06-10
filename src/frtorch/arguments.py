@@ -4,7 +4,8 @@ import os
 import sys 
 import shutil
 from datetime import datetime
-from frtorch import torch_model_utils as tmu
+from . import torch_model_utils as tmu
+from .logger import PrintLog
 
 
 def str2bool(v):
@@ -49,7 +50,6 @@ def set_arguments(args):
         print('removing %s' % output_path)
         shutil.rmtree(output_path)
       os.mkdir(output_path)
-      os.mkdir(output_path + '/fig')
       if(args.use_tensorboard):
         for p in os.listdir(args.tensorboard_path):
           if(p.startswith(model)): 
@@ -69,6 +69,12 @@ def set_arguments(args):
   args.output_path = output_path + '/'
   args.tensorboard_path = tensorboard_path + '/'
   args.output_path_fig = output_path + '/fig/'
+
+  # set log path
+  if(args.log_print_to_file): 
+    print('All printed log also written in: %s' % 
+      args.output_path + 'train_log.txt')
+    sys.stdout = PrintLog(args.output_path + 'train_log.txt')
 
   # set gpu 
   os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   

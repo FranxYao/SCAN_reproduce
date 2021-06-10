@@ -7,6 +7,7 @@ Mon Apr 26th 2021
 
 import numpy as np 
 import json 
+import torch 
 
 from tqdm import tqdm 
 from transformers import BertTokenizer
@@ -51,14 +52,6 @@ def pipeline(questions,
     attention_masks.append(a)
 
     s_ = s.split(' ')[:-1]
-    if('S' in s_): 
-      print(so)
-      print_sql_as_tree(so)
-      print('----')
-      print_sql_as_tree(s)
-      print('----')
-      print('[' + ' '.join(s_) + ']')
-
     s = [word2id[w] for w in s_]
     s = [1] + s + [2]
     s = tmu.pad_or_trunc_seq(s, max_s_len, 0)
@@ -120,16 +113,30 @@ def simplify_dataset(questions, queries, setname):
       else: complex_query_cnt += 1
     else: complex_query_cnt += 1
 
-  print('%s set, %d query ignored' % (setname, complex_query_cnt))
+  print('%s set, %d query in total, %d query ignored' % 
+    (setname, len(queries), complex_query_cnt))
   return questions_simple, queries_simple, query_original
 
+def collate_fn(batch):
+  questions = np.array([b['question'] for b in batch])
+  attention_masks = np.array([b['attention_masks'] for b in batch])
+  queries = np.array([b['queries'] for b in batch])
+  queries_original = [b['queries_original'] for b in batch]
+  batch = {'questions': torch.tensor(questions),
+           'attention_masks': torch.tensor(attention_masks),
+           'queries': torch.tensor(queries), 
+           'queries_original': queries_original
+           }
+  return batch
+
 class AtisDataset(Dataset):
-  """"""
-  def __init__(self, questions, queries, attention_masks):
+  """Atis Pytorch Dataset """
+  def __init__(self, questions, queries, attention_masks, queries_original):
     super().__init__()
     self.questions = np.array(questions)
     self.queries = np.array(queries)
     self.attention_masks = np.array(attention_masks)
+    self.queries_original = queries_original
     return 
 
   def __len__(self):
@@ -138,11 +145,13 @@ class AtisDataset(Dataset):
   def __getitem__(self, idx):
     instance = {'question': self.questions[idx], 
                 'attention_masks': self.attention_masks[idx], 
-                'queries': self.queries[idx]}
+                'queries': self.queries[idx],
+                'queries_original': self.queries_original[idx]
+                }
     return instance
 
 class AtisDataSQL(object):
-  """Atis dataset, simplified version, basically remove all the unnecessary 
+  """Atis dataset wrapper, simplified version, basically remove all unnecessary 
   parenthesis 
 
   TODO: tree representation and poset decoding for Atis 
@@ -152,6 +161,9 @@ class AtisDataSQL(object):
     self.batch_size = batch_size
     self.tgt_word2id, self.tgt_id2word = read_vocab(
       '../data/text2sql/atis_train.vocab')
+    self.tgt_pad_id = self.tgt_word2id['[PAD]']
+    self.tgt_start_id = self.tgt_word2id['[BOS]']
+    self.tgt_end_id = self.tgt_word2id['[EOS]']
 
     data_path = '../data/text2sql/atis.json'
     data = json.load(open(data_path))
@@ -181,21 +193,48 @@ class AtisDataSQL(object):
 
     # data processing pipeline 
     train_questions, train_sql, train_attn, max_q_len, max_s_len = pipeline(
-      train_questions, train_sql, train_sql_original, self.tokenizer, 'train', self.tgt_word2id)
-    print('max question length %d, max query length %d' % (max_q_len, max_s_len))
-    dev_questions, dev_sql, dev_attn, _, _ = pipeline(dev_questions, dev_sql, dev_sql_original,
+      train_questions, train_sql, train_sql_original, 
+      self.tokenizer, 'train', self.tgt_word2id)
+    print(
+      'max question length %d, max query length %d' % (max_q_len, max_s_len))
+    self.max_dec_len = max_s_len
+    dev_questions, dev_sql, dev_attn, _, _ = pipeline(
+      dev_questions, dev_sql, dev_sql_original,
       self.tokenizer, 'dev', self.tgt_word2id, max_q_len, max_s_len)
-    test_questions, test_sql, test_attn, _, _ = pipeline(test_questions, test_sql, test_sql_original, 
+    test_questions, test_sql, test_attn, _, _ = pipeline(
+      test_questions, test_sql, test_sql_original, 
       self.tokenizer, 'dev', self.tgt_word2id, max_q_len, max_s_len)
 
     # init dataset
-    self.train_data = AtisDataset(train_questions, train_sql, train_attn)
-    self.dev_data = AtisDataset(dev_questions, dev_sql, dev_attn)
-    self.test_data = AtisDataset(test_questions, test_sql, test_attn)
+    self.train_data = AtisDataset(
+      train_questions, train_sql, train_attn, train_sql_original)
+    self.dev_data = AtisDataset(
+      dev_questions, dev_sql, dev_attn, dev_sql_original)
+    self.test_data = AtisDataset(
+      test_questions, test_sql, test_attn, test_sql_original)
     return 
 
-  def convert_ids_to_string(self, ids, remove_pad=True):
-    return 
+  @property
+  def tgt_vocab_size(self):
+    return len(self.tgt_id2word)
+
+  def convert_ids_to_string(self, ids, 
+    remove_pad=True, remove_bos=True, remove_eos=True):
+    """"""
+    s = []
+    for i in ids:
+      si = self.tgt_id2word[i]
+      if(si == '[BOS]'):
+        if(remove_bos): pass
+        else: s.append(si)
+      elif(si == '[EOS]'):
+        if(remove_eos): pass
+        else: s.append(si)
+      elif(si == '[PAD]'):
+        if(remove_pad): pass
+        else: s.append(si)
+      else: s.append(si)
+    return ' '.join(s)
 
   def train_dataloader(self):
     loader = DataLoader(self.train_data, 
@@ -203,7 +242,9 @@ class AtisDataSQL(object):
                         shuffle=True, 
                         num_workers=0,
                         drop_last=False,
-                        pin_memory=False)
+                        pin_memory=False,
+                        collate_fn=collate_fn
+                        )
     return loader
 
   def val_dataloader(self):
@@ -212,7 +253,9 @@ class AtisDataSQL(object):
                         shuffle=False, 
                         num_workers=0,
                         drop_last=False,
-                        pin_memory=False)
+                        pin_memory=False,
+                        collate_fn=collate_fn
+                        )
     return loader
 
   def test_dataloader(self):
@@ -221,6 +264,8 @@ class AtisDataSQL(object):
                         shuffle=False, 
                         num_workers=0,
                         drop_last=False,
-                        pin_memory=False)
+                        pin_memory=False,
+                        collate_fn=collate_fn
+                        )
     return loader
   

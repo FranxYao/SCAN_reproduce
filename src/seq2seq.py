@@ -9,7 +9,7 @@ from torch.optim import Adam
 from argparse import ArgumentParser
 from frtorch import FRModel, str2bool
 from frtorch import torch_model_utils as tmu
-from seq_models import LSTMEncoder, LSTMDecoder
+from frtorch import LSTMEncoder, LSTMDecoder
 
 class Seq2seqModel(nn.Module):
   def __init__(self, 
@@ -27,7 +27,7 @@ class Seq2seqModel(nn.Module):
                encoder_type='lstm'
                ):
     """Pytorch seq2seq model"""
-    super().__init__()
+    super(Seq2seqModel, self).__init__()
     self.pad_id = pad_id
     self.device = device
     self.lambda_align = lambda_align

@@ -1,6 +1,6 @@
 import numpy as np 
 
-from scan_parser import parse_unit_command
+from .scan_parser import parse_unit_command
 from argparse import ArgumentParser
 from collections import Counter
 from torch.utils.data import Dataset, DataLoader, random_split

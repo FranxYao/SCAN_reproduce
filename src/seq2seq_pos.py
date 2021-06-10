@@ -6,7 +6,7 @@ from torch.optim import Adam
 from argparse import ArgumentParser
 from frtorch import FRModel, str2bool
 from frtorch import torch_model_utils as tmu
-from seq_models import LSTMEncoder, LSTMDecoder
+from frtorch import LSTMEncoder, LSTMDecoder
 
 class Seq2seqPosModel(nn.Module):
   def __init__(self, 

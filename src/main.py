@@ -2,14 +2,14 @@ import argparse
 import torch
 import sys
 
-from data_utils.scan import SCANData
-from data_utils.text2sql import Text2Sql
 from seq2seq import Seq2seq, Seq2seqModel
 from seq2seq_pos import Seq2seqPos, Seq2seqPosModel
+from data_utils import SCANData, AtisDataSQL
+from seq2seq_atis import Seq2seqParseModel, Seq2seqParse
 
 from frtorch import torch_model_utils as tmu
-from frtorch import str2bool, set_arguments, PrintLog
-from controller import Controller
+from frtorch import str2bool, set_arguments
+from frtorch import Controller
 
 
 def define_argument():
@@ -98,7 +98,7 @@ def define_argument():
   parser.add_argument(
     "--validate_start_epoch", default=0, type=int)
   parser.add_argument(
-    "--validation_criteria", default='val_loss', type=str)
+    "--validation_criteria", default='exact_match', type=str)
   parser.add_argument(
     "--write_output", type=str2bool, 
     nargs='?', const=True, default=False)
@@ -113,11 +113,11 @@ def define_argument():
   parser.add_argument(
     "--learning_rate", default=1e-4, type=float)
 
-  # model 
+  # model - seq2seq scan  
   parser.add_argument(
-    "--state_size", type=int, default=100)
+    "--state_size", type=int, default=200)
   parser.add_argument(
-    "--embedding_size", type=int, default=100)
+    "--embedding_size", type=int, default=200)
   parser.add_argument(
     "--dropout", type=float, default=0.0)
   parser.add_argument(
@@ -129,9 +129,15 @@ def define_argument():
   parser.add_argument(
     "--lstm_bidirectional", type=str2bool, 
     nargs='?', const=True, default=True)
-
   parser.add_argument(
     "--lambda_align", type=float, default=1.0)
+
+  # model - seq2seq atis
+  parser.add_argument(
+    "--enc_learning_rate", default=1e-4, type=float)
+  parser.add_argument(
+    "--dec_learning_rate", default=1e-3, type=float)
+
 
   return parser
 
@@ -144,11 +150,6 @@ def main():
   # parser = Seq2seqPos.add_model_specific_args(parser)
   args = parser.parse_args()
   args = set_arguments(args)
-
-  if(args.log_print_to_file): 
-    print('All printed log also written in: %s' % 
-      args.output_path + 'train_log.txt')
-    sys.stdout = PrintLog(args.output_path + 'train_log.txt')
 
   # dataset
   if(args.dataset == 'scan'):
@@ -163,10 +164,10 @@ def main():
                        change_counter_to_symbol=args.change_counter_to_symbol
                        )
     dataset.build()
-  elif(args.dataset == 'atis'):
-    dataset = Text2Sql(...) # TBC
-  elif(args.dataset == 'geoquery'):
-    dataset = Text2Sql(...) # TBC 
+  elif(args.dataset == 'atis_sql'):
+    dataset = AtisDataSQL(batch_size=args.batch_size)
+  # elif(args.dataset == 'geoquery'):
+  #   dataset = Text2Sql(...) # TBC 
   else: 
     raise NotImplementedError('dataset %s not implemented' % args.dataset)
 
@@ -191,24 +192,39 @@ def main():
                     model=model_, 
                     output_path_fig=args.output_path_fig,
                     write_fig_after_epoch=args.write_fig_after_epoch)
-  elif(args.model_name == 'seq2seq_pos'):
-    model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
-                            use_attention=args.use_attention,
-                            pad_id=dataset.tgt_word2id['<PAD>'],
-                            start_id=dataset.tgt_word2id['<GOO>'],
-                            max_dec_len=dataset.max_dec_len,
-                            src_vocab_size=dataset.src_vocab_size, 
-                            pos_size=len(dataset.pos_word2id),
-                            tgt_vocab_size=dataset.tgt_vocab_size,
-                            embedding_size=args.embedding_size,
-                            state_size=args.state_size,
-                            lstm_layers=args.lstm_layers,
-                            dropout=args.dropout,
-                            device=args.device
-                            )
-    model = Seq2seqPos(args.learning_rate, args.device, 
-      dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
-    model.build(model_)
+  # elif(args.model_name == 'seq2seq_pos'):
+  #   model_ = Seq2seqPosModel(word_dropout=args.word_dropout,
+  #                           use_attention=args.use_attention,
+  #                           pad_id=dataset.tgt_word2id['<PAD>'],
+  #                           start_id=dataset.tgt_word2id['<GOO>'],
+  #                           max_dec_len=dataset.max_dec_len,
+  #                           src_vocab_size=dataset.src_vocab_size, 
+  #                           pos_size=len(dataset.pos_word2id),
+  #                           tgt_vocab_size=dataset.tgt_vocab_size,
+  #                           embedding_size=args.embedding_size,
+  #                           state_size=args.state_size,
+  #                           lstm_layers=args.lstm_layers,
+  #                           dropout=args.dropout,
+  #                           device=args.device
+  #                           )
+  #   model = Seq2seqPos(args.learning_rate, args.device, 
+  #     dataset.tgt_word2id['<PAD>'], dataset.tgt_id2word)
+  elif(args.model_name == 'seq2seq_atis'):
+    model_ = Seq2seqParseModel(pad_id=dataset.tgt_pad_id,
+                               start_id=dataset.tgt_start_id,
+                               max_dec_len=dataset.max_dec_len, 
+                               tgt_vocab_size=dataset.tgt_vocab_size, 
+                               embedding_size=args.state_size,
+                               state_size=args.state_size,
+                               dropout=args.dropout
+                               )
+    model = Seq2seqParse(pad_id=dataset.tgt_pad_id,
+                         end_id=dataset.tgt_end_id, 
+                         model=model_,
+                         enc_learning_rate=args.enc_learning_rate,
+                         dec_learning_rate=args.dec_learning_rate,
+                         device=args.device
+                         )
   else: 
     raise NotImplementedError('model %s not implemented!' % args.model_name)  
   tmu.print_params(model)

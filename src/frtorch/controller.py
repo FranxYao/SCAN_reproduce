@@ -31,9 +31,8 @@ class Controller(object):
     self.tensorboard_path = args.tensorboard_path
 
     self.write_output = args.write_output
-    self.write_output_full_log = args.write_output_full_log
+    # self.write_output_full = args.write_output_full
 
-    validation_scores = model.validation_scores
     self.validation_scores = {}
     for n in model.validation_scores:
       self.validation_scores[n] = []
@@ -45,7 +44,6 @@ class Controller(object):
     self.print_log_per_nbatch = args.print_log_per_nbatch
     self.model_path = args.model_path
     self.output_path = args.output_path
-    self.output_path_fig = args.output_path_fig
     self.device = args.device
     self.batch_size = args.batch_size
 
@@ -95,13 +93,14 @@ class Controller(object):
 
     n_iter = self.start_epoch * num_batches - 1
     for ei in range(self.start_epoch, self.num_epoch):
-      tmu.refresh_dir(self.output_path_fig + 'train_e' + str(ei))
       model.train()
       # before epoch 
       self.logger.reset()
       epoch_start_time = time()
       for bi, batch in enumerate(train_dataloader):
-        for n in batch: batch[n] = batch[n].to(self.device)
+        for n in batch: 
+          if(isinstance(batch[n], torch.Tensor)):
+            batch[n] = batch[n].to(self.device)
         n_iter += 1
 
         out_dict = model.train_step(batch, n_iter, ei, bi)
@@ -195,15 +194,13 @@ class Controller(object):
       (self.model_name, self.model_version, ei, n_iter, mode))
     model.eval()
 
+    output_path_base = self.output_path + self.model_name + '_' + mode
     if(self.write_output):
-      tmu.refresh_dir(self.output_path_fig + mode + '_e' + str(ei))
-      fd = open(self.output_path +
-        self.model_name + '_' + mode + '_epoch_%d.txt' % ei, 'w')
+      fd = open(output_path_base + '_epoch_%d.txt' % ei, 'w')
     else: fd = None
-    if(self.write_output_full_log):
-      fd_full = open(self.output_path +
-        self.model_name + '_' + mode + '_epoch_%d_full.txt' % ei, 'w')
-    else: fd_full = None
+    # if(self.write_output_full):
+    #   fd_full = open(output_path_base + '_epoch_%d_full.txt' % ei, 'w')
+    # else: fd_full = None
 
     
     inspect_at = np.random.randint(self.print_log_per_nbatch)
@@ -220,10 +217,12 @@ class Controller(object):
 
     start_time = time()
     for bi, batch in enumerate(dataloader):
-      for n in batch: batch[n] = batch[n].to(self.device)
-      out_dict = model.val_step(batch, n_iter, ei, bi)
+      for n in batch: 
+        if(isinstance(batch[n], torch.Tensor)):
+          batch[n] = batch[n].to(self.device)
+      out_dict = model.val_step(batch, n_iter, ei, bi, dataset)
       outputs.append(out_dict)
-      batches.append(batch)
+      # batches.append(batch)
 
       for n in out_dict:
         if(n in scores): scores[n].append(out_dict[n])
@@ -234,11 +233,13 @@ class Controller(object):
       if(self.write_output):
         dataset.write_output_batch(fd, batch, out_dict, mode, ei, bi)
 
+    model.val_end(outputs, n_iter, ei, bi, dataset, mode, output_path_base)
+
     # if(self.write_output):
     #   dataset.write_output_full(batches, outputs, mode, e_id)
 
     if(self.write_output): fd.close()
-    if(self.write_output_full_log): fd_full.close()
+    # if(self.write_output_full): fd_full.close()
 
     # average dev scores
     for n in scores: 
