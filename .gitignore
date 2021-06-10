@@ -6,3 +6,6 @@ __pycache__
 /outputs/
 /tensorboard/
 *.DS_Store
+/src/test_*
+/local/
+.ipynb_checkpoints

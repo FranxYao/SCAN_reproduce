@@ -83,6 +83,7 @@ class LSTMDecoder(nn.Module):
                max_dec_len=-1,
                embedding_size=100,
                state_size=100, 
+               mem_state_size=100,
                dropout=0.0,
                lstm_layers=1,
                decode_strategy='greedy',
@@ -111,9 +112,9 @@ class LSTMDecoder(nn.Module):
                         dropout=dropout)
 
     self.attention = Attention(
-      state_size, state_size, embedding_size)
+      state_size, mem_state_size, embedding_size)
     self.hetero_attn = Attention(
-      state_size, embedding_size, embedding_size)
+      state_size, mem_state_size, embedding_size)
 
     self.dropout = nn.Dropout(dropout)
     self.attn_cont_proj = nn.Linear(
@@ -253,7 +254,7 @@ class LSTMDecoder(nn.Module):
     pred_dist = []
     for i in range(max_dec_len):
       dec_out, state, attn_dist_t = self.forward(
-        inp, state, mem_emb, mem_mask, hetero_mem, hetero_mask, return_attn)
+        inp, state, mem_emb, mem_mask, hetero_mem, hetero_mask, return_attn=True)
       attn_dist.append(attn_dist_t)
       dec_out = dec_out[0]
       lm_logits = self.output_proj(dec_out)

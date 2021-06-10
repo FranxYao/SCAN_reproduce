@@ -13,7 +13,7 @@ Tensor operations:
 * `find_index`
 * `seq_ends`
 * `reverse_sequence`
-* `gather_last`
+* `batch_gather_last`
 * `batch_index_select`
 * `batch_index_put`
 * `batch_index_fill`
@@ -41,6 +41,7 @@ Model operations:
 Miscellaneous:
 * `print_args`
 * `str2bool`
+* `BucketSampler`
 """
 
 import os 
@@ -55,6 +56,7 @@ import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 
+from torch.utils.data import BatchSampler, SequentialSampler
 from torch.nn.parameter import Parameter
 from collections import OrderedDict, Counter
 
@@ -255,7 +257,7 @@ def reverse_sequence(seq, seq_lens):
   return reversed_seq
 
 
-def gather_last(seq, seq_lens):
+def batch_gather_last(seq, seq_lens):
   """Gather the last element of a given sequence"""
   return batch_index_select(seq, seq_lens - 1)
 
@@ -356,11 +358,12 @@ def batch_index_fill(A, ind, v):
   batch_size = A.size(0)
   M = A.size(1)
   As = list(A.size()[2:])
+  device = A.device
 
   A_ = A.view([batch_size * M] + As)
 
   if(len(ind.size()) == 1): ind = ind.unsqueeze(1)
-  ind_ = (((torch.arange(batch_size)) * M).unsqueeze(1) + ind).flatten()
+  ind_ = (((torch.arange(batch_size)) * M).unsqueeze(1).to(device) + ind).flatten()
   A_[ind_] = v
   A_filled = A_.view([batch_size, M] + As)
   return A_filled
@@ -382,7 +385,7 @@ def batch_repeat(A, n):
   A_ = A_.view([batch_size * n] + As)
   return A_
 
-def build_vocab(data: list, start_id: int, freq_thres: int=0) -> (dict, dict):
+def build_vocab(data: list, start_id: int, freq_thres: int=0):
   """
   Build vocabulary
 
@@ -687,6 +690,16 @@ def reparameterize_gumbel(logits, tau):
   y = logits + sample_gumbel(logits.size()).to(logits.device)
   return F.softmax(y / tau, dim=-1)
 
+def gumbel_topk(logits, k):
+  """Gumbel-topk for sampling without replacements 
+  Args: 
+    logits: [*, vocab_size] 
+    k: integer
+  """
+  y = logits + sample_gumbel(logits.size()).to(logits.device)
+  val, ind = torch.topk(y, k, dim=-1)
+  return val, ind
+
 
 def seq_gumbel_encode(sample, sample_ids, embeddings, gumbel_st):
   """Encoding of gumbel sample. Given a sequence of relaxed one-hot 
@@ -915,3 +928,36 @@ def refresh_dir(d):
     shutil.rmtree(d)
   print('creating dir: %s' % d)
   os.makedirs(d)
+  return 
+
+
+class BucketSampler(object):
+  """Bucket Sampler for bucketing sentences with similar length"""
+  def __init__(self, dataset, batch_size):
+    """
+    Args:
+      dataset: a torch.data.Dataset instance. Assume sentences within the 
+        dataset are sorted according to their lengths
+    """
+    indices = range(len(dataset))
+    indices = list(BatchSampler(
+      SequentialSampler(indices), batch_size=batch_size, drop_last=True))
+    self.indices = indices
+    self.ptr = 0
+    return 
+
+  def __len__(self):
+    return len(self.indices)
+
+  def __iter__(self):
+    np.random.shuffle(self.indices)
+    self.ptr = 0
+    return self
+
+  def __next__(self):
+    if(self.ptr < len(self.indices)):
+      result = self.indices[self.ptr]
+      self.ptr += 1
+      return result
+    else: 
+      raise StopIteration
